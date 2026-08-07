@@ -117,10 +117,18 @@ struct Recorrido: View {
         }
     }
 
+    /// `Color.quaternary` no es un `Color` sino un `ShapeStyle`, y en un
+    /// ternario las tres ramas han de ser del mismo tipo.
+    private func colorDelPunto(hecho: Bool, actual: Bool) -> Color {
+        if actual { return .accentColor }
+        if hecho { return .green }
+        return Color.secondary.opacity(0.3)
+    }
+
     private func hito(_ nombre: String, hecho: Bool, actual: Bool) -> some View {
         HStack(spacing: 6) {
             Circle()
-                .fill(actual ? Color.accentColor : (hecho ? .green : .quaternary))
+                .fill(colorDelPunto(hecho: hecho, actual: actual))
                 .frame(width: 7, height: 7)
             Text(nombre)
                 .font(.callout)

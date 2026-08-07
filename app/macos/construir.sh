@@ -61,6 +61,10 @@ fi
 # --- 1. El nucleo, para las dos arquitecturas -------------------------------
 
 echo "==> Nucleo en Rust, aarch64 y x86_64"
+# El mismo minimo que declara Package.swift. Sin esto, las dependencias con
+# codigo en C se compilan para la version de la maquina y el enlazador avisa de
+# cada objeto por separado.
+export MACOSX_DEPLOYMENT_TARGET=14.0
 for objetivo in aarch64-apple-darwin x86_64-apple-darwin; do
   rustup target add "$objetivo" >/dev/null 2>&1 || true
   ( cd "$RAIZ" && cargo build --release -p attacca-ffi --target "$objetivo" )
@@ -76,7 +80,7 @@ echo "    $(lipo -info "$BIBLIOTECA")"
 # El puente enlaza contra las bibliotecas del sistema que usa el nucleo:
 # Security y CoreFoundation las necesita la verificacion de certificados de la
 # consulta de hora, y libresolv la resolucion de nombres.
-ENLACE=(
+OPCIONES=(
   -Xlinker -L -Xlinker "$SALIDA/lib"
   -Xlinker -lattacca_ffi
   -Xlinker -framework -Xlinker Security
@@ -85,6 +89,28 @@ ENLACE=(
   -Xlinker -lresolv
 )
 
+# --- 1.b ¿Conoce este Xcode macOS 26? ------------------------------------------
+#
+# `#available(macOS 26.0, *)` decide en tiempo de ejecucion. Para que el
+# compilador acepte `glassEffect` hace falta ademas que el SDK lo declare, y el
+# de Xcode 16 no lo declara. La version del compilador es el indicador: Xcode 26
+# trae Swift 6.2.
+#
+# Sin la marca la aplicacion se compila igual, con los materiales de siempre.
+
+version_swift=$(swift -version 2>&1 | sed -n 's/.*Swift version \([0-9][0-9.]*\).*/\1/p' | head -1)
+mayor=${version_swift%%.*}
+resto=${version_swift#*.}
+menor=${resto%%.*}
+: "${mayor:=0}" "${menor:=0}"
+
+if [ "$mayor" -gt 6 ] || { [ "$mayor" -eq 6 ] && [ "$menor" -ge 2 ]; }; then
+  OPCIONES+=(-Xswiftc -DHAY_CRISTAL)
+  echo "    Swift $version_swift: se compila con Liquid Glass"
+else
+  echo "    Swift $version_swift: anterior a 6.2, se compila sin Liquid Glass"
+fi
+
 # --- 2. Las pruebas, si se piden --------------------------------------------
 
 if [ "$PRUEBAS" = 1 ]; then
@@ -92,14 +118,14 @@ if [ "$PRUEBAS" = 1 ]; then
   # Las pruebas se compilan para la arquitectura de la maquina: comprobar el
   # puente no requiere el binario universal, y compilar una sola arquitectura
   # tarda la mitad.
-  ( cd "$AQUI" && swift test "${ENLACE[@]}" )
+  ( cd "$AQUI" && swift test "${OPCIONES[@]}" )
 fi
 
 # --- 3. La aplicacion, universal --------------------------------------------
 
 echo "==> Aplicacion en Swift, universal"
 ARQUITECTURAS=(--arch arm64 --arch x86_64)
-( cd "$AQUI" && swift build -c "$CONFIG" "${ARQUITECTURAS[@]}" "${ENLACE[@]}" )
+( cd "$AQUI" && swift build -c "$CONFIG" "${ARQUITECTURAS[@]}" "${OPCIONES[@]}" )
 
 # La ruta se consulta con las mismas opciones con las que se compilo: con dos
 # arquitecturas SwiftPM deja la salida en otro sitio que con una.

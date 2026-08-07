@@ -102,18 +102,36 @@ Las clases están en macOS 26. La aplicación funciona desde macOS 14, y eso
 obliga a decidir qué pasa en 14 y en 15.
 
 Todo lo que nombra Liquid Glass está en un archivo, `Cristal.swift`. El resto de
-las vistas pide `.cristal(...)` y no sabe en qué sistema se ejecuta:
+las vistas pide `.cristal(...)` y no sabe en qué sistema se ejecuta.
+
+Hacen falta **dos condiciones, no una**, y confundirlas cuesta una compilación
+entera:
 
 ```swift
 @ViewBuilder
 func cristal(forma: some Shape = …, destacado: Bool = false) -> some View {
-    if #available(macOS 26.0, *) {
+    #if HAY_CRISTAL                       // ¿lo conoce el SDK con el que compilo?
+    if #available(macOS 26.0, *) {        // ¿lo tiene el sistema que lo ejecuta?
         self.glassEffect(destacado ? .regular.tint(.accentColor) : .regular, in: forma)
     } else {
-        self.background(destacado ? .thickMaterial : .regularMaterial, in: forma)
+        self.materialDeSiempre(forma: forma, destacado: destacado)
     }
+    #else
+    self.materialDeSiempre(forma: forma, destacado: destacado)
+    #endif
 }
 ```
+
+`#available` decide en tiempo de ejecución y no basta: para que el compilador
+acepte `glassEffect` el SDK tiene que declararlo, y el de Xcode 16 no lo
+declara. Con solo la comprobación de disponibilidad, un Xcode anterior a 26 no
+compila la aplicación en absoluto: `value of type 'Self' has no member
+'glassEffect'`.
+
+`HAY_CRISTAL` la define `construir.sh` cuando el compilador es 6.2 o posterior,
+que es el que trae Xcode 26. La versión del compilador es un indicador del SDK,
+no el SDK: un toolchain suelto de Swift 6.2 sobre el SDK de Xcode 16 engañaría a
+la comprobación. Para lo que hay que decidir aquí, basta.
 
 Lo mismo con `.buttonStyle(.glassProminent)` frente a `.borderedProminent`, y
 con `GlassEffectContainer` frente a una pila normal.
@@ -187,14 +205,23 @@ símbolo, se construye sin quejarse y falla al abrirlo.
 ./app/macos/construir.sh --firmar     # firma con APPLE_SIGNING_IDENTITY
 ```
 
-Requiere macOS y Xcode 26 o posterior. Con un Xcode anterior el paquete se
-produce igual: `#available(macOS 26.0, *)` es siempre falso en un SDK que no
-conoce macOS 26, de modo que la aplicación se compila con los materiales
-antiguos y sin Liquid Glass. Compilar contra el SDK de 26 es lo que activa el
-material, no ejecutar en 26.
+Requiere macOS. Con Xcode 26 o posterior se compila con Liquid Glass; con uno
+anterior el paquete se produce igual, con los materiales de siempre, y el guion
+lo dice en su salida:
 
-La comprobación de cada cambio lo ejecuta en `macos-15` y sube el `.app` como
-artefacto.
+```
+    Swift 6.2: se compila con Liquid Glass
+    Swift 6.1.2: anterior a 6.2, se compila sin Liquid Glass
+```
+
+Compilar contra el SDK de 26 es lo que permite que el material exista en el
+binario; ejecutar en 26 es lo que hace que se vea.
+
+La comprobación de cada cambio lo ejecuta en `macos-15`, eligiendo antes el
+Xcode más reciente que traiga la máquina, y sube el `.app` como artefacto. Que
+ese Xcode llegue o no a 26 depende de la imagen del momento: el registro del
+trabajo lo dice en la línea de arriba, y de ahí se sabe si esa ejecución llegó a
+compilar el cristal o solo el camino alternativo.
 
 ## Qué cubre y qué no
 

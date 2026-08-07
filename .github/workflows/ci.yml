@@ -97,8 +97,20 @@ jobs:
         with:
           key: nativa-macos
 
-      - name: Version de Swift
-        run: swift --version
+      # La maquina trae varias versiones de Xcode. Liquid Glass solo se compila
+      # con el SDK de macOS 26, asi que se elige la mas reciente que haya. Si no
+      # llega a 26, el guion lo detecta y compila sin cristal: el trabajo pasa
+      # igual y el registro dice cual de las dos cosas ocurrio.
+      - name: Elegir el Xcode mas reciente
+        run: |
+          set -euo pipefail
+          ls -d /Applications/Xcode*.app || true
+          ultimo=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1 || true)
+          if [ -n "$ultimo" ]; then
+            sudo xcode-select -s "$ultimo"
+          fi
+          xcodebuild -version
+          swift --version
 
       # El guion comprueba el encabezado, funde las dos bibliotecas del nucleo,
       # ejecuta las pruebas del puente y verifica que el .app es universal. Si

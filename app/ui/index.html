@@ -10,10 +10,12 @@
     <div id="app">
       <header class="barra">
         <span class="marca">Attacca</span>
-        <nav id="nav"></nav>
+        <nav id="nav" aria-label="Secciones"></nav>
       </header>
       <main id="vista" tabindex="-1"></main>
-      <footer class="estado" id="estado"></footer>
+      <!-- La fase, dónde está el proyecto y en qué disco. Visibles sin pedir
+           nada, que es lo que exige el apartado 44.2. -->
+      <footer class="situacion" id="situacion" aria-live="polite"></footer>
     </div>
     <dialog id="diálogo"></dialog>
     <script type="module" src="main.js"></script>

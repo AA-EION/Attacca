@@ -1,6 +1,12 @@
 [workspace]
 resolver = "2"
-members = ["crates/attacca-core", "crates/attacca-cli", "app/src-tauri"]
+members = [
+    "crates/attacca-core",
+    "crates/attacca-ordenes",
+    "crates/attacca-ffi",
+    "crates/attacca-cli",
+    "app/src-tauri",
+]
 
 [workspace.package]
 version = "0.1.0"
@@ -11,6 +17,7 @@ repository = "https://github.com/AA-EION/Attacca"
 
 [workspace.dependencies]
 attacca-core = { path = "crates/attacca-core" }
+attacca-ordenes = { path = "crates/attacca-ordenes" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 sha2 = "0.10"

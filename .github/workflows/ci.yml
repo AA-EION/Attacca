@@ -39,11 +39,14 @@ jobs:
       - name: Formato
         run: cargo fmt --all -- --check
 
+      # En una sola linea a proposito. La barra invertida continua una linea en
+      # bash y no en PowerShell, que es la consola de la maquina de Windows: ahi
+      # la orden se partia en dos y la segunda mitad no existia.
       - name: Clippy
-        run: cargo clippy -p attacca-core -p attacca-cli --all-targets -- -D warnings
+        run: cargo clippy --workspace --exclude attacca-app --all-targets -- -D warnings
 
       - name: Pruebas
-        run: cargo test -p attacca-core -p attacca-cli
+        run: cargo test -p attacca-core -p attacca-cli -p attacca-ordenes -p attacca-ffi
 
       # El apartado 42 exige que el material sea utilizable sin la aplicacion.
       # Esto lo comprueba con las utilidades del sistema, no con Attacca.
@@ -75,6 +78,61 @@ jobs:
       # quinientos proyectos indexados.
       - name: Presupuesto de arranque en frio
         run: cargo test -p attacca-core --release arranque_en_frio -- --nocapture
+
+  # La interfaz nativa de macOS. Se compila y se prueba aparte porque solo
+  # existe ahi: es la unica maquina de la matriz con Swift y con el SDK que
+  # trae Liquid Glass.
+  nativa-macos:
+    name: Interfaz nativa de macOS
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: nativa-macos
+
+      # La maquina trae varias versiones de Xcode. Liquid Glass solo se compila
+      # con el SDK de macOS 26, asi que se elige la mas reciente que haya. Si no
+      # llega a 26, el guion lo detecta y compila sin cristal: el trabajo pasa
+      # igual y el registro dice cual de las dos cosas ocurrio.
+      - name: Elegir el Xcode mas reciente
+        run: |
+          set -euo pipefail
+          # Con el propio glob en lugar de `ls`: un nombre con espacios partiria
+          # la lista, y ordenar por version necesita -V, no el orden del glob,
+          # que pondria Xcode_9 despues de Xcode_26.
+          printf '%s\n' /Applications/Xcode*.app
+          ultimo=$(printf '%s\n' /Applications/Xcode*.app | sort -V | tail -1)
+          # Si no hay ninguno, el glob queda sin expandir y no es un directorio.
+          if [ -d "$ultimo" ]; then
+            sudo xcode-select -s "$ultimo"
+          fi
+          xcodebuild -version
+          swift --version
+
+      # El guion comprueba el encabezado, funde las dos bibliotecas del nucleo,
+      # ejecuta las pruebas del puente y verifica que el .app es universal. Si
+      # algo de eso falla, falla aqui y no el dia de la publicacion.
+      - name: Construir Attacca.app universal
+        run: ./app/macos/construir.sh --pruebas
+
+      # Se sube el .dmg y no la carpeta .app: al subir una carpeta, el artefacto
+      # se comprime en un zip que no conserva el bit de ejecucion, y lo que se
+      # descarga no abre. La imagen de disco si conserva los permisos.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: attacca-macos-nativa-dmg
+          path: |
+            app/macos/salida/Attacca-macos-nativa.dmg
+            app/macos/salida/Attacca-macos-nativa.dmg.sha256
+          if-no-files-found: error
+          retention-days: 14
 
   # Los tres artefactos se producen en cada cambio, no solo al publicar: un
   # paquete que solo se construye el dia de la version es un paquete sin probar.

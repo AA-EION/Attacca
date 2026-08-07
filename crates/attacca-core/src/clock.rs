@@ -230,7 +230,7 @@ fn query_http_date(url: &str, timeout: Duration) -> Option<i64> {
     // lista incrustada la rechazaría.
     let mut constructor = ureq::AgentBuilder::new()
         .timeout(timeout)
-        .tls_connector(std::sync::Arc::new(native_tls::TlsConnector::new().ok()?))
+        .tls_config(tls_config())
         .user_agent(&crate::written_by());
 
     // Se respeta la configuración de proxy del entorno, habitual en redes de
@@ -257,6 +257,27 @@ fn query_http_date(url: &str, timeout: Duration) -> Option<i64> {
     }
     let local_ms = unix_millis(t1)? + ida_vuelta / 2;
     Some(local_ms - servidor_ms)
+}
+
+/// Configuración TLS que delega la validación en el almacén de confianza del
+/// sistema operativo.
+///
+/// Se construye una sola vez: cargar el almacén tiene coste y no cambia durante
+/// la ejecución.
+fn tls_config() -> std::sync::Arc<rustls::ClientConfig> {
+    static CONFIG: OnceLock<std::sync::Arc<rustls::ClientConfig>> = OnceLock::new();
+    CONFIG
+        .get_or_init(|| {
+            use rustls_platform_verifier::ConfigVerifierExt;
+            // El proveedor criptográfico se instala una vez por proceso; que ya
+            // esté instalado no es un fallo.
+            let _ = rustls::crypto::ring::default_provider().install_default();
+            std::sync::Arc::new(
+                rustls::ClientConfig::with_platform_verifier()
+                    .expect("el almacén de confianza del sistema no se pudo cargar"),
+            )
+        })
+        .clone()
 }
 
 /// Interpreta el formato de fecha de HTTP: `Wed, 06 Aug 2026 17:20:00 GMT`.

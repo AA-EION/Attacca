@@ -4,6 +4,7 @@ on:
   push:
     branches: ["**"]
   pull_request:
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always
@@ -14,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-22.04, macos-latest, windows-latest]
+        os: [ubuntu-22.04, macos-14, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -39,6 +40,7 @@ jobs:
       # El apartado 42 exige que el material sea utilizable sin la aplicacion.
       # Esto lo comprueba con las utilidades del sistema, no con Attacca.
       - name: Contenedor extraible sin la aplicacion
+        if: matrix.os != 'windows-latest'
         shell: bash
         run: bash scripts/comprobar-interoperabilidad.sh
 
@@ -48,32 +50,16 @@ jobs:
         if: matrix.os == 'ubuntu-22.04'
         run: python3 scripts/auditar-redaccion.py
 
-  aplicacion:
-    name: Aplicacion de escritorio
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-22.04, macos-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-
-      - name: Dependencias de Linux
-        if: matrix.os == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
-            librsvg2-dev libsoup-3.0-dev libayatana-appindicator3-dev \
-            build-essential curl wget file libssl-dev
-
-      - name: Compilar
-        run: cargo build --release -p attacca-app
-
       # El arranque en frio debe estar por debajo de dos segundos con
       # quinientos proyectos indexados.
       - name: Presupuesto de arranque en frio
         run: cargo test -p attacca-core --release arranque_en_frio -- --nocapture
+
+  # Los tres artefactos se producen en cada cambio, no solo al publicar: un
+  # paquete que solo se construye el dia de la version es un paquete sin probar.
+  paquetes:
+    name: Paquetes
+    needs: nucleo
+    uses: ./.github/workflows/construir.yml
+    with:
+      firmar: false

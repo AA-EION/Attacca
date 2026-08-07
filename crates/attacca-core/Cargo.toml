@@ -15,8 +15,12 @@ zip = { workspace = true }
 time = { workspace = true }
 yaml-rust2 = { workspace = true }
 getrandom = { workspace = true }
-ureq = { version = "2", default-features = false, features = ["native-tls", "socks-proxy"] }
-native-tls = "0.2"
+# TLS con rustls y el almacen de confianza del sistema operativo. Evita
+# depender de OpenSSL: el paquete distribuible queda autocontenido y la
+# autoridad de certificacion de una red corporativa sigue reconociendose.
+ureq = { version = "2", default-features = false, features = ["tls", "socks-proxy"] }
+rustls = { version = "0.23", default-features = false, features = ["std", "tls12", "ring"] }
+rustls-platform-verifier = "0.7"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.59", features = [

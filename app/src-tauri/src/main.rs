@@ -10,8 +10,16 @@ fn main() {
     // Unix. De este valor dependen todas las marcas del apartado 22.3.
     attacca_core::clock::init_local_offset();
 
-    tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
+    let constructor = tauri::Builder::default().plugin(tauri_plugin_dialog::init());
+
+    // La actualización verificable comprueba la firma del paquete descargado
+    // contra la clave pública declarada en la configuración. Sin clave no se
+    // compila: es preferible no ofrecer actualización a ofrecer una que no
+    // verifica nada.
+    #[cfg(feature = "actualizador")]
+    let constructor = constructor.plugin(tauri_plugin_updater::Builder::new().build());
+
+    constructor
         .manage(estado::Estado::default())
         .invoke_handler(tauri::generate_handler![
             ordenes::raiz_sugerida,

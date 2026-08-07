@@ -14,9 +14,16 @@ tauri-build = { version = "2", features = [] }
 attacca-core = { workspace = true }
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
+# Actualizacion verificable. Queda tras una caracteristica porque
+# exige una clave de firma real: sin ella, un actualizador que no
+# verifica es peor que ninguno.
+tauri-plugin-updater = { version = "2", optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 
 [features]
 # Tauri necesita esta característica para la compilación de producción.
 custom-protocol = ["tauri/custom-protocol"]
+# Activa la comprobación de actualizaciones firmadas. Exige que
+# `plugins.updater.pubkey` contenga la clave pública del publicador.
+actualizador = ["dep:tauri-plugin-updater"]

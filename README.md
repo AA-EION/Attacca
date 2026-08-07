@@ -67,6 +67,29 @@ abierto: Attacca observa descriptores, nunca los toca.
 
 ---
 
+## Descarga
+
+Cada versión publica un paquete por plataforma, con su suma de verificación:
+
+| Plataforma | Archivo |
+|---|---|
+| Windows | `Attacca-windows-x86_64.exe` |
+| macOS, Apple Silicon e Intel | `Attacca-macos-universal.dmg` |
+| Linux | `Attacca-linux-x86_64.AppImage` |
+
+La línea de órdenes `attacca` acompaña a cada plataforma.
+
+```
+sha256sum -c SHA256SUMS.txt      # Linux
+shasum -a 256 -c SHA256SUMS.txt  # macOS
+```
+
+Los mismos tres paquetes se producen en cada cambio y quedan como artefactos en
+la pestaña Actions. El detalle del flujo está en
+[`docs/PUBLICACION.md`](docs/PUBLICACION.md).
+
+---
+
 ## Compilación
 
 Requisitos: Rust 1.82 o posterior.
@@ -145,13 +168,19 @@ Lo que está comprobado de extremo a extremo:
 - contenedor extraído con `unzip` y verificado con `sha256sum`, sin Attacca;
 - reconstrucción íntegra del índice tras borrar la base de datos.
 
+El flujo de integración y publicación comprueba, además, en cada cambio y en
+las tres plataformas: formato y clippy sin avisos, el presupuesto de arranque en
+frío, las reglas de redacción de la interfaz, que el `.dmg` contenga las dos
+arquitecturas, y que el AppImage arranque y siga vivo bajo una pantalla virtual.
+
 Lo que falta para una publicación:
 
-- **Binarios firmados.** El flujo de compilación para las tres plataformas está
-  en `.github/workflows/release.yml`, con los pasos de firma preparados. Las
-  credenciales de firma —certificado de Apple, certificado de Windows y clave de
-  actualización— no se han generado: son de quien publica.
-- **Iconos.** Los de `app/src-tauri/icons` son provisionales.
+- **Credenciales de firma.** Los pasos están en el flujo y documentados en
+  `docs/PUBLICACION.md`. El certificado de Apple, el de Windows y la clave de
+  actualización son de quien publica; sin ellos los paquetes salen sin firmar y
+  el flujo continúa. La actualización verificable está implementada tras la
+  característica `actualizador` y solo se compila cuando hay clave: un
+  actualizador que no verifica la firma es peor que ninguno.
 - **Prueba de interoperabilidad de la clase `W`.** El apartado 45 exige que otra
   implementación independiente acepte el material producido. No consta que
   exista una segunda implementación de STAVE 2.0.

@@ -4,125 +4,137 @@ on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      etiqueta:
+        description: Etiqueta de la version, por ejemplo v0.1.0
+        required: true
+        type: string
 
-# Un binario o paquete por plataforma, firmado, con actualizacion verificable.
+# Publica un artefacto por plataforma:
 #
-# Las credenciales de firma no estan generadas: son de quien publica. Sin ellas
-# el flujo produce paquetes sin firmar, y los pasos de firma se omiten. Los
-# secretos que hay que crear en el repositorio son:
+#   Attacca-windows-x86_64.exe        instalador NSIS
+#   Attacca-macos-universal.dmg       arm64 e Intel en un solo binario
+#   Attacca-linux-x86_64.AppImage
+#
+# Cada uno con su suma de verificacion, y la linea de ordenes de cada
+# plataforma junto a el.
+#
+# CREDENCIALES DE FIRMA
+#
+# Sin ellas el flujo produce paquetes sin firmar y la publicacion sigue
+# adelante. Los secretos que hay que crear en el repositorio son:
 #
 #   TAURI_SIGNING_PRIVATE_KEY           clave de firma del actualizador
 #   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  su contrasena
-#   APPLE_CERTIFICATE                   certificado Developer ID en base64
-#   APPLE_CERTIFICATE_PASSWORD          su contrasena
+#   APPLE_CERTIFICATE                   Developer ID en base64
+#   APPLE_CERTIFICATE_PASSWORD
 #   APPLE_SIGNING_IDENTITY              nombre de la identidad
 #   APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID   para el sellado ante Apple
 #   WINDOWS_CERTIFICATE                 certificado de firma en base64
-#   WINDOWS_CERTIFICATE_PASSWORD        su contrasena
+#   WINDOWS_CERTIFICATE_PASSWORD
 #
 # La clave publica del actualizador debe copiarse ademas en
 # app/src-tauri/tauri.conf.json, en plugins.updater.pubkey. Se genera con:
 #
 #   cargo tauri signer generate -w ~/.tauri/attacca.key
 
-jobs:
-  paquetes:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            objetivo: aarch64-apple-darwin
-            etiqueta: macos-arm64
-          - os: macos-latest
-            objetivo: x86_64-apple-darwin
-            etiqueta: macos-x86_64
-          - os: ubuntu-22.04
-            objetivo: x86_64-unknown-linux-gnu
-            etiqueta: linux-x86_64
-          - os: windows-latest
-            objetivo: x86_64-pc-windows-msvc
-            etiqueta: windows-x86_64
+permissions:
+  contents: write
 
+jobs:
+  # Ningun paquete se publica sin que las pruebas pasen en las tres
+  # plataformas.
+  comprobar:
+    name: Pruebas
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-22.04, macos-14, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
-
       - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.objetivo }}
-
       - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p attacca-core -p attacca-cli --release
 
-      - name: Dependencias de Linux
-        if: matrix.os == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
-            librsvg2-dev libsoup-3.0-dev libayatana-appindicator3-dev \
-            build-essential curl wget file libssl-dev
+  paquetes:
+    name: Paquetes
+    needs: comprobar
+    uses: ./.github/workflows/construir.yml
+    with:
+      firmar: true
+    secrets: inherit
 
-      # Ningun paquete se publica sin que las pruebas pasen.
-      - name: Pruebas
-        run: cargo test -p attacca-core -p attacca-cli --release
+  publicar:
+    name: Publicar
+    needs: paquetes
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
 
-      - name: Linea de ordenes
-        run: cargo build --release -p attacca-cli --target ${{ matrix.objetivo }}
-
-      - name: Paquete de escritorio
-        uses: tauri-apps/tauri-action@v0
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - uses: actions/download-artifact@v4
         with:
-          projectPath: app/src-tauri
-          args: --target ${{ matrix.objetivo }}
-          tagName: ${{ github.ref_name }}
-          releaseName: Attacca ${{ github.ref_name }}
-          releaseDraft: true
-          includeUpdaterJson: true
+          path: descargas
 
-      - name: Firma en Windows
-        if: matrix.os == 'windows-latest' && env.CERT != ''
-        env:
-          CERT: ${{ secrets.WINDOWS_CERTIFICATE }}
-          CERT_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-        shell: pwsh
+      - name: Reunir los artefactos
         run: |
-          $bytes = [Convert]::FromBase64String($env:CERT)
-          [IO.File]::WriteAllBytes("cert.pfx", $bytes)
-          Get-ChildItem -Recurse -Include *.msi,*.exe target/${{ matrix.objetivo }}/release/bundle |
-            ForEach-Object {
-              & signtool sign /f cert.pfx /p $env:CERT_PASSWORD `
-                /tr http://timestamp.digicert.com /td sha256 /fd sha256 $_.FullName
-            }
-          Remove-Item cert.pfx
+          set -euo pipefail
+          mkdir -p publicacion
+          find descargas -type f -exec cp {} publicacion/ \;
+          cd publicacion
+          ls -la
 
-      # La suma de verificacion permite comprobar la descarga sin confiar en el
-      # canal, del mismo modo que el manifiesto de integridad de un paquete.
-      - name: Sumas de verificacion
-        shell: bash
-        run: |
-          cd target/${{ matrix.objetivo }}/release
-          for f in attacca attacca.exe; do
-            [ -f "$f" ] && sha256sum "$f" > "$f.sha256"
+          # Los tres paquetes deben estar. Una publicacion incompleta es peor
+          # que ninguna: quien descargue encontrara su plataforma ausente sin
+          # saber por que.
+          for esperado in \
+            Attacca-windows-x86_64.exe \
+            Attacca-macos-universal.dmg \
+            Attacca-linux-x86_64.AppImage
+          do
+            [ -f "$esperado" ] || { echo "Falta $esperado."; exit 1; }
           done
-          find bundle -type f \( -name '*.dmg' -o -name '*.msi' -o -name '*.deb' \
-            -o -name '*.rpm' -o -name '*.AppImage' -o -name '*.exe' \) \
-            -exec sh -c 'sha256sum "$1" > "$1.sha256"' _ {} \;
 
-      - uses: actions/upload-artifact@v4
+          # Un unico archivo de sumas, para comprobar toda la descarga de una vez.
+          cat *.sha256 > SHA256SUMS.txt
+          rm -f *.sha256
+          cat SHA256SUMS.txt
+
+      - name: Publicar la version
+        uses: softprops/action-gh-release@v2
         with:
-          name: attacca-${{ matrix.etiqueta }}
-          path: |
-            target/${{ matrix.objetivo }}/release/bundle/**/*
-            target/${{ matrix.objetivo }}/release/attacca
-            target/${{ matrix.objetivo }}/release/attacca.exe
-            target/${{ matrix.objetivo }}/release/*.sha256
-          if-no-files-found: warn
+          tag_name: ${{ inputs.etiqueta || github.ref_name }}
+          name: Attacca ${{ inputs.etiqueta || github.ref_name }}
+          draft: true
+          files: publicacion/*
+          body: |
+            Attacca ${{ inputs.etiqueta || github.ref_name }}, conforme a STAVE 2.0.
+            Clase de conformidad declarada: M, Gestora.
+
+            ## Descarga
+
+            | Plataforma | Archivo |
+            |---|---|
+            | Windows | `Attacca-windows-x86_64.exe` |
+            | macOS, Apple Silicon e Intel | `Attacca-macos-universal.dmg` |
+            | Linux | `Attacca-linux-x86_64.AppImage` |
+
+            La linea de ordenes `attacca` acompana a cada plataforma. Ofrece el
+            ciclo completo sin interfaz grafica.
+
+            ## Comprobar la descarga
+
+                sha256sum -c SHA256SUMS.txt      # Linux
+                shasum -a 256 -c SHA256SUMS.txt  # macOS
+
+            ## Antes de instalar
+
+            El AppImage necesita permiso de ejecucion:
+
+                chmod +x Attacca-linux-x86_64.AppImage
+
+            ## Declaracion de conformidad
+
+            `attacca conformidad` la emite en texto plano. La version completa,
+            con las interpretaciones adoptadas y los requisitos delegados en
+            herramientas externas, esta en `docs/CONFORMIDAD.md`.

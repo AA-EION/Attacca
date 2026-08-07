@@ -104,9 +104,13 @@ jobs:
       - name: Elegir el Xcode mas reciente
         run: |
           set -euo pipefail
-          ls -d /Applications/Xcode*.app || true
-          ultimo=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -1 || true)
-          if [ -n "$ultimo" ]; then
+          # Con el propio glob en lugar de `ls`: un nombre con espacios partiria
+          # la lista, y ordenar por version necesita -V, no el orden del glob,
+          # que pondria Xcode_9 despues de Xcode_26.
+          printf '%s\n' /Applications/Xcode*.app
+          ultimo=$(printf '%s\n' /Applications/Xcode*.app | sort -V | tail -1)
+          # Si no hay ninguno, el glob queda sin expandir y no es un directorio.
+          if [ -d "$ultimo" ]; then
             sudo xcode-select -s "$ultimo"
           fi
           xcodebuild -version

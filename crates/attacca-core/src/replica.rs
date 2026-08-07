@@ -113,6 +113,12 @@ pub fn set_replicas(doc: &mut Map, replicas: &[Replica]) {
 /// Un proyecto cuya custodia no sea propia no tiene réplica activa; en ese caso
 /// la ausencia no es un incumplimiento.
 pub fn check_single_active(replicas: &[Replica], custody: CustodyState) -> Result<()> {
+    // Un proyecto sin inventario de réplicas es una copia única. El invariante
+    // habla de «todas las réplicas de un proyecto»: con una sola copia, esa
+    // copia es la activa y no hay nada que comprobar.
+    if replicas.is_empty() {
+        return Ok(());
+    }
     let activas = replicas
         .iter()
         .filter(|r| r.state == ReplicaState::Active)
@@ -347,6 +353,9 @@ mod tests {
 
         let ninguna = vec![replica("v1", ReplicaState::Standby)];
         assert!(check_single_active(&ninguna, CustodyState::Own).is_err());
+
+        // Una copia única, sin inventario declarado, no infringe el invariante.
+        assert!(check_single_active(&[], CustodyState::Own).is_ok());
     }
 
     #[test]

@@ -39,10 +39,11 @@ jobs:
       - name: Formato
         run: cargo fmt --all -- --check
 
+      # En una sola linea a proposito. La barra invertida continua una linea en
+      # bash y no en PowerShell, que es la consola de la maquina de Windows: ahi
+      # la orden se partia en dos y la segunda mitad no existia.
       - name: Clippy
-        run: |
-          cargo clippy -p attacca-core -p attacca-cli -p attacca-ordenes \
-            -p attacca-ffi --all-targets -- -D warnings
+        run: cargo clippy --workspace --exclude attacca-app --all-targets -- -D warnings
 
       - name: Pruebas
         run: cargo test -p attacca-core -p attacca-cli -p attacca-ordenes -p attacca-ffi

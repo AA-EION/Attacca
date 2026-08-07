@@ -23,6 +23,8 @@ final class Modelo {
     var carpeta = ""
     var archivos: [Entrada] = []
     var reloj: EstadoReloj?
+    /// Resultado de la última comprobación de integridad, mientras se enseña.
+    var resultadoIntegridad: ResultadoIntegridad?
     var raiz: String?
     var fallo: ErrorDeNucleo?
     var cargando = false
@@ -45,9 +47,8 @@ final class Modelo {
         do {
             try await sesion.comprobarOrdenes(Self.ordenesRequeridas)
 
-            guard let sugerida: String? = try await sesion.invocar("raiz_sugerida"),
-                  let ruta = sugerida
-            else { return }
+            let sugerida: String? = try await sesion.invocar("raiz_sugerida")
+            guard let ruta = sugerida else { return }
 
             let apertura: AperturaRepositorio = try await sesion.invocar(
                 "abrir_repositorio", ["raiz": .texto(ruta)]
@@ -120,15 +121,13 @@ final class Modelo {
         }
     }
 
-    func comprobarIntegridad() async -> ResultadoIntegridad? {
-        guard let p = proyecto else { return nil }
-        var salida: ResultadoIntegridad?
+    func comprobarIntegridad() async {
+        guard let p = proyecto else { return }
         await conFallo {
-            salida = try await self.sesion.invocar(
+            self.resultadoIntegridad = try await self.sesion.invocar(
                 "verificar_integridad", ["uid": .texto(p.resumen.uid)]
             )
         }
-        return salida
     }
 
     func comprobarHora() async {
@@ -147,7 +146,7 @@ final class Modelo {
         case "abrir_en_explorador":
             await abrirEnFinder()
         case "verificar_integridad":
-            _ = await comprobarIntegridad()
+            await comprobarIntegridad()
         default:
             let destino = p.carpetas_etapa.first ?? ""
             await mostrar(carpeta: destino)
@@ -157,7 +156,10 @@ final class Modelo {
 
     // MARK: Auxiliares
 
-    private func conFallo(_ cuerpo: @Sendable () async throws -> Void) async {
+    /// El cierre no lleva `@Sendable` a propósito: uno que lo llevara no
+    /// heredaría el aislamiento del actor principal, y este modelo escribe su
+    /// propio estado desde dentro.
+    private func conFallo(_ cuerpo: () async throws -> Void) async {
         cargando = true
         defer { cargando = false }
         do {

@@ -22,23 +22,32 @@ public struct ErrorDeNucleo: LocalizedError, Sendable, Equatable {
 /// llamadas simultáneas desde la interfaz. Serializar aquí cuesta menos que
 /// razonar sobre concurrencia al otro lado de la frontera de C.
 public actor Sesion {
-    private let puntero: OpaquePointer
+    /// `AttaccaSesion` es un tipo incompleto en el encabezado: se declara y no
+    /// se define, para que su contenido pueda cambiar sin mover la frontera.
+    /// Swift importa los punteros a un tipo así como `OpaquePointer`, de modo
+    /// que aquí no hay nada que convertir.
+    ///
+    /// `nonisolated(unsafe)` porque `OpaquePointer` no es `Sendable` y `deinit`
+    /// no está aislado en el actor. La seguridad no la da el compilador aquí,
+    /// la dan dos hechos: el puntero se asigna una vez en `init` y no vuelve a
+    /// escribirse, y el estado al otro lado vive tras un `Mutex` en Rust.
+    private nonisolated(unsafe) let puntero: OpaquePointer
 
     /// Prepara el proceso y abre la sesión.
     ///
     /// `attacca_inicializar` captura el desplazamiento de zona horaria y debe
-    /// ejecutarse antes de que existan otros hilos. `dispatch_once` a través de
-    /// `lazy` garantiza que ocurra una sola vez aunque se abran varias sesiones.
+    /// ejecutarse antes de que existan otros hilos. Ocurre una sola vez aunque
+    /// se abran varias sesiones.
     public init() {
         Self.preparado()
         guard let p = attacca_sesion_nueva() else {
             fatalError("no se pudo reservar la sesión del núcleo")
         }
-        puntero = OpaquePointer(p)
+        puntero = p
     }
 
     deinit {
-        attacca_sesion_cerrar(UnsafeMutablePointer(puntero))
+        attacca_sesion_cerrar(puntero)
     }
 
     private static let inicializacion: Void = {
@@ -86,11 +95,26 @@ public actor Sesion {
         let cuerpo = try JSONEncoder().encode(argumentos)
         let json = String(decoding: cuerpo, as: UTF8.self)
 
-        guard let salida = orden.withCString({ o in
-            json.withCString { a in
-                attacca_invocar(UnsafeMutablePointer(puntero), o, a)
-            }
-        }) else {
+        // Copias propias en lugar de dos `withCString` anidados. El anidamiento
+        // hace que la cadena de fuera cruce hacia el cierre de dentro, que está
+        // aislado en el actor, y el compilador lo rechaza con razón. Dos
+        // reservas por llamada no se notan en una aplicación que responde a
+        // clics.
+        guard let o = strdup(orden), let a = strdup(json) else {
+            throw ErrorDeNucleo(
+                """
+                No hay memoria para preparar la orden «\(orden)». \
+                La operación no se ha iniciado. \
+                Cerrar otras aplicaciones y volver a intentarlo.
+                """
+            )
+        }
+        defer {
+            free(o)
+            free(a)
+        }
+
+        guard let salida = attacca_invocar(puntero, o, a) else {
             throw ErrorDeNucleo(
                 """
                 El núcleo no devolvió nada al ejecutar «\(orden)». \

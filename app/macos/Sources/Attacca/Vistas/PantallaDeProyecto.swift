@@ -6,8 +6,6 @@ struct PantallaDeProyecto: View {
     @Bindable var modelo: Modelo
     let proyecto: VistaProyecto
 
-    @State private var resultadoIntegridad: ResultadoIntegridad?
-
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
@@ -46,10 +44,10 @@ struct PantallaDeProyecto: View {
         .alert(
             Textos.nombre,
             isPresented: Binding(
-                get: { resultadoIntegridad != nil },
-                set: { if !$0 { resultadoIntegridad = nil } }
+                get: { modelo.resultadoIntegridad != nil },
+                set: { if !$0 { modelo.resultadoIntegridad = nil } }
             ),
-            presenting: resultadoIntegridad
+            presenting: modelo.resultadoIntegridad
         ) { _ in
             Button(Textos.accion["cerrar"] ?? "Cerrar", role: .cancel) {}
         } message: { r in

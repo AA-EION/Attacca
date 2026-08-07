@@ -97,25 +97,44 @@ jobs:
 
       # La linea de ordenes acompana al paquete: acredita que el material es
       # utilizable sin la interfaz grafica (Anexo H).
+      # Se deja directamente en su nombre definitivo, en lugar de copiarla a la
+      # raiz del repositorio y recogerla dos pasos despues: el rodeo perdia el
+      # ejecutable en Windows, donde bash resuelve los nombres con y sin la
+      # extension .exe indistintamente.
       - name: Linea de ordenes
         shell: bash
         run: |
+          set -euo pipefail
+          mkdir -p artefactos
+          destino="artefactos/attacca-${{ matrix.etiqueta }}"
+
           if [ "${{ matrix.objetivo }}" = "universal-apple-darwin" ]; then
             cargo build --release -p attacca-cli --target aarch64-apple-darwin
             cargo build --release -p attacca-cli --target x86_64-apple-darwin
-            lipo -create -output attacca \
+            lipo -create -output "$destino" \
               target/aarch64-apple-darwin/release/attacca \
               target/x86_64-apple-darwin/release/attacca
-            lipo -info attacca
+            lipo -info "$destino"
           else
             cargo build --release -p attacca-cli --target ${{ matrix.objetivo }}
-            construido="target/${{ matrix.objetivo }}/release/attacca"
-            [ -f "$construido.exe" ] && construido="$construido.exe"
-            cp "$construido" .
+            origen="target/${{ matrix.objetivo }}/release/attacca"
+            if [ -f "$origen.exe" ]; then
+              # En Windows el ejecutable lleva extension, y el artefacto ha de
+              # conservarla para poder ejecutarse.
+              cp "$origen.exe" "$destino.exe"
+            else
+              cp "$origen" "$destino"
+            fi
           fi
 
+          ls -l artefactos
+
+      # La condicion mira `secrets`, no `env`: el bloque `env` de un paso no
+      # esta disponible en su propio `if`, de modo que comprobar
+      # env.APPLE_CERTIFICATE dejaba el paso sin ejecutar incluso habiendo
+      # certificado.
       - name: Preparar la firma de macOS
-        if: inputs.firmar && matrix.os == 'macos-14' && env.APPLE_CERTIFICATE != ''
+        if: inputs.firmar && matrix.os == 'macos-14' && secrets.APPLE_CERTIFICATE != ''
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
@@ -134,17 +153,27 @@ jobs:
           security list-keychain -d user -s "$KEYCHAIN"
           rm -f $RUNNER_TEMP/cert.p12
 
+          # Las variables de firma se declaran aqui y solo aqui. Definidas y
+          # vacias no equivalen a no definidas: Tauri las lee como presentes,
+          # intenta firmar con una identidad vacia y el empaquetado termina en
+          # «The specified item could not be found in the keychain».
+          {
+            echo "APPLE_SIGNING_IDENTITY=${{ secrets.APPLE_SIGNING_IDENTITY }}"
+            echo "APPLE_ID=${{ secrets.APPLE_ID }}"
+            echo "APPLE_PASSWORD=${{ secrets.APPLE_PASSWORD }}"
+            echo "APPLE_TEAM_ID=${{ secrets.APPLE_TEAM_ID }}"
+          } >> "$GITHUB_ENV"
+
       - name: Paquete de escritorio
         uses: tauri-apps/tauri-action@v0
         env:
           # Sin estos secretos el paquete se produce sin firmar, y el flujo
           # sigue adelante: un artefacto sin firmar es util para comprobar.
+          #
+          # Las variables APPLE_* no se declaran aqui a proposito. Las declara
+          # el paso anterior, y solo cuando hay certificado.
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ inputs.firmar && secrets.APPLE_SIGNING_IDENTITY || '' }}
-          APPLE_ID: ${{ inputs.firmar && secrets.APPLE_ID || '' }}
-          APPLE_PASSWORD: ${{ inputs.firmar && secrets.APPLE_PASSWORD || '' }}
-          APPLE_TEAM_ID: ${{ inputs.firmar && secrets.APPLE_TEAM_ID || '' }}
         with:
           projectPath: app/src-tauri
           # La actualizacion verificable solo se compila cuando hay clave de
@@ -169,8 +198,10 @@ jobs:
           }
           [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\cert.pfx",
             [Convert]::FromBase64String($env:CERT))
+          # Se firman tanto el instalador como la linea de ordenes, y antes de
+          # calcular las sumas de verificacion: firmar despues las invalidaria.
           Get-ChildItem -Recurse -Filter *.exe `
-            target/${{ matrix.objetivo }}/release/bundle | ForEach-Object {
+            target/${{ matrix.objetivo }}/release/bundle, artefactos | ForEach-Object {
               & signtool sign /f "$env:RUNNER_TEMP\cert.pfx" /p $env:CERT_PASSWORD `
                 /tr http://timestamp.digicert.com /td sha256 /fd sha256 $_.FullName
             }
@@ -205,11 +236,13 @@ jobs:
             cp "$s" artefactos/
           done
 
-          # La linea de ordenes acompana al paquete.
-          if [ -f attacca.exe ]; then
-            cp attacca.exe "artefactos/attacca-${{ matrix.etiqueta }}.exe"
-          else
-            cp attacca "artefactos/attacca-${{ matrix.etiqueta }}"
+          # La linea de ordenes ya se dejo en `artefactos` al compilarla. Se
+          # comprueba que sigue ahi antes de firmar las sumas: un paquete sin
+          # ella no acredita que el material sea utilizable sin interfaz.
+          if ! ls artefactos/attacca-${{ matrix.etiqueta }}* > /dev/null 2>&1; then
+            echo "No esta la linea de ordenes en artefactos."
+            ls -la artefactos
+            exit 1
           fi
 
           # Suma de verificacion de cada artefacto, del mismo modo que un

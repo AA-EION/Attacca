@@ -83,11 +83,26 @@ impl Manifest {
     }
 
     /// Escribe el manifiesto de forma atómica.
+    ///
+    /// El manifiesto queda fuera del bloqueo de solo lectura que se aplica al
+    /// ceder la custodia o al poner una réplica en espera: es donde consta el
+    /// propio bloqueo, y el cambio de estado ha de poder registrarse. Como la
+    /// escritura atómica crea antes un archivo temporal, el directorio que lo
+    /// contiene ha de admitir escritura durante la operación.
     pub fn save(&mut self) -> Result<()> {
         stamp_written_by(&mut self.doc);
         canonical_order(&mut self.doc, self.kind);
         let text = emit(&self.doc);
-        atomic::write_str(&self.path, &text)
+        self.write_atomically(&text)
+    }
+
+    fn write_atomically(&self, text: &str) -> Result<()> {
+        match self.path.parent() {
+            Some(dir) => {
+                crate::fsx::readonly::with_writable_dir(dir, || atomic::write_str(&self.path, text))
+            }
+            None => atomic::write_str(&self.path, text),
+        }
     }
 
     /// Escribe el manifiesto sin registrar la implementación.
@@ -98,7 +113,7 @@ impl Manifest {
     pub fn save_verbatim(&mut self) -> Result<()> {
         canonical_order(&mut self.doc, self.kind);
         let text = emit(&self.doc);
-        atomic::write_str(&self.path, &text)
+        self.write_atomically(&text)
     }
 }
 

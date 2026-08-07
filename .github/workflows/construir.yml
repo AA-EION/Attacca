@@ -153,7 +153,7 @@ jobs:
           args: >-
             --target ${{ matrix.objetivo }}
             --bundles ${{ matrix.bundles }}
-            ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' && '--features actualizador --config ../../app/src-tauri/tauri.actualizador.conf.json' || '' }}
+            ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' && '--features actualizador --config tauri.actualizador.conf.json' || '' }}
           includeUpdaterJson: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
 
       - name: Firma de Windows
@@ -183,8 +183,6 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p artefactos
-          version=$(grep -m1 '^version' app/src-tauri/Cargo.toml | sed 's/.*"\(.*\)".*/\1/' || true)
-          [ -n "$version" ] || version=$(grep -m1 '^version' Cargo.toml | sed 's/.*"\(.*\)".*/\1/')
 
           # Cada empaquetador deja su salida en su propia carpeta; buscar por
           # extension a secas podria recoger un ejecutable intermedio.

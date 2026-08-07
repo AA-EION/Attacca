@@ -363,7 +363,16 @@ pub fn accept_return(
         &destino,
         fsx::walk::total_bytes(&fsx::walk::conserved_files(&contenido)),
     )?;
-    fsx::copy_tree(&contenido, &destino, &[])?;
+    // La copia sigue bloqueada mientras el retorno no se acepta, de modo que se
+    // admite escritura solo en el dominio de transferencia, que es donde los
+    // envíos entran y salen. El resto del proyecto no se toca hasta el paso 4.
+    let transferencia = project.root().join("09_TRANSFER");
+    if !transferencia.is_dir() {
+        fsx::readonly::with_writable_dir(project.root(), || {
+            std::fs::create_dir_all(&transferencia).map_err(|e| Error::io(&transferencia, e))
+        })?;
+    }
+    fsx::readonly::with_writable_dir(&transferencia, || fsx::copy_tree(&contenido, &destino, &[]))?;
 
     if divergent {
         // No se restituye la custodia ni se sobrescribe nada: la reconciliación

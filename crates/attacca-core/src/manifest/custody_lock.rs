@@ -96,7 +96,11 @@ impl CustodyLock {
 
 /// Escribe el marcador en la raíz del proyecto.
 pub fn write_marker(project_root: &Path, lock: &CustodyLock) -> Result<()> {
-    lock.write(&project_root.join(super::CUSTODY_LOCK_FILE))
+    // La raíz suele estar ya bloqueada cuando se escribe el marcador: la cesión
+    // bloquea y a continuación marca.
+    crate::fsx::readonly::with_writable_dir(project_root, || {
+        lock.write(&project_root.join(super::CUSTODY_LOCK_FILE))
+    })
 }
 
 /// Suprime el marcador. Se invoca cuando el estado vuelve a ser propia o
@@ -106,9 +110,12 @@ pub fn remove_marker(project_root: &Path) -> Result<()> {
     if !path.exists() {
         return Ok(());
     }
-    // El marcador pudo quedar en solo lectura junto con el resto del proyecto.
+    // El marcador pudo quedar en solo lectura junto con el resto del proyecto,
+    // y suprimirlo exige además escritura sobre el directorio que lo contiene.
     let _ = crate::fsx::readonly::set_file_readonly(&path, false);
-    std::fs::remove_file(&path).map_err(|e| Error::io(&path, e))
+    crate::fsx::readonly::with_writable_dir(project_root, || {
+        std::fs::remove_file(&path).map_err(|e| Error::io(&path, e))
+    })
 }
 
 #[cfg(test)]

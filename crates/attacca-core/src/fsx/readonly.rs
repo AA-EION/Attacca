@@ -36,6 +36,49 @@ pub fn set_file_readonly(path: &Path, readonly: bool) -> Result<()> {
     fs::set_permissions(path, perms).map_err(|e| Error::io(path, e))
 }
 
+/// Escribe en un directorio que puede estar bloqueado en solo lectura.
+///
+/// Los marcadores de estado —`CUSTODY.lock` y `REPLICA.hold`— viven en la raíz
+/// del proyecto y han de poder escribirse, actualizarse y suprimirse mientras
+/// la copia está bloqueada: son el mecanismo por el que el bloqueo consta ante
+/// quien mira la carpeta. Retirado el permiso de escritura del directorio, ni
+/// siquiera puede crearse el archivo temporal de la escritura atómica, de modo
+/// que el permiso se restituye durante la operación y se retira al terminar.
+///
+/// El permiso original se repone aunque la operación falle. En Windows el
+/// atributo de solo lectura de un directorio no impide crear archivos dentro,
+/// con lo que la operación se ejecuta sin más.
+pub fn with_writable_dir<T>(dir: &Path, op: impl FnOnce() -> Result<T>) -> Result<T> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let meta = fs::metadata(dir).map_err(|e| Error::io(dir, e))?;
+        let original = meta.permissions().mode();
+        if original & 0o200 != 0 {
+            return op();
+        }
+        let mut perms = meta.permissions();
+        perms.set_mode(original | 0o700);
+        fs::set_permissions(dir, perms).map_err(|e| Error::io(dir, e))?;
+
+        let resultado = op();
+
+        let mut reponer = fs::metadata(dir)
+            .map_err(|e| Error::io(dir, e))?
+            .permissions();
+        reponer.set_mode(original);
+        let repuesto = fs::set_permissions(dir, reponer).map_err(|e| Error::io(dir, e));
+        // El resultado de la operación manda: si falló, su mensaje es el que
+        // explica lo ocurrido.
+        resultado.and_then(|v| repuesto.map(|_| v))
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = dir;
+        op()
+    }
+}
+
 /// Aplica el régimen de solo lectura a un árbol completo.
 ///
 /// Los directorios conservan el permiso de recorrido: la norma exige impedir la
@@ -158,6 +201,38 @@ pub fn probe(dir: &Path) -> FsCapabilities {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// El marcador de custodia se escribe en la raíz del proyecto, que la
+    /// cesión acaba de bloquear. Sin restituir el permiso del directorio no
+    /// puede crearse ni el archivo temporal de la escritura atómica.
+    #[test]
+    fn el_marcador_se_escribe_en_un_proyecto_bloqueado() {
+        let dir = crate::pruebas::raiz_temporal().unwrap();
+        let proyecto = dir.path().join("proyecto");
+        fs::create_dir(&proyecto).unwrap();
+        fs::write(proyecto.join("material.wav"), b"x").unwrap();
+        set_tree_readonly(&proyecto, true, &[]).unwrap();
+
+        // Un proceso administrador no queda sujeto a los bits de permiso, con
+        // lo que el bloqueo solo puede darse por comprobado si se observa.
+        let bloqueado = fs::write(proyecto.join("ajeno.txt"), b"x").is_err();
+
+        with_writable_dir(&proyecto, || {
+            crate::fsx::atomic::write_str(&proyecto.join("CUSTODY.lock"), "state: cedida\n")
+        })
+        .unwrap();
+        assert!(proyecto.join("CUSTODY.lock").is_file());
+
+        if bloqueado {
+            // El bloqueo se repone al terminar la operación.
+            assert!(
+                fs::write(proyecto.join("otro.txt"), b"x").is_err(),
+                "el directorio quedó escribible después de la operación"
+            );
+        }
+
+        set_tree_readonly(&proyecto, false, &[]).unwrap();
+    }
 
     #[test]
     fn aplica_y_retira_el_bloqueo_de_un_archivo() {

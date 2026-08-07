@@ -80,7 +80,11 @@ impl ReplicaHold {
 
 /// Escribe el marcador en la raíz de una réplica no activa.
 pub fn write_marker(project_root: &Path, hold: &ReplicaHold) -> Result<()> {
-    hold.write(&project_root.join(super::REPLICA_HOLD_FILE))
+    // Una réplica en espera está bloqueada en solo lectura, y el marcador es lo
+    // que hace constar el bloqueo.
+    crate::fsx::readonly::with_writable_dir(project_root, || {
+        hold.write(&project_root.join(super::REPLICA_HOLD_FILE))
+    })
 }
 
 /// Suprime el marcador. Se invoca cuando la réplica pasa a activa
@@ -91,7 +95,9 @@ pub fn remove_marker(project_root: &Path) -> Result<()> {
         return Ok(());
     }
     let _ = crate::fsx::readonly::set_file_readonly(&path, false);
-    std::fs::remove_file(&path).map_err(|e| Error::io(&path, e))
+    crate::fsx::readonly::with_writable_dir(project_root, || {
+        std::fs::remove_file(&path).map_err(|e| Error::io(&path, e))
+    })
 }
 
 #[cfg(test)]

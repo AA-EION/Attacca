@@ -147,17 +147,17 @@ jobs:
         run: |
           # El certificado vive en un llavero temporal que se descarta con la
           # maquina; no queda en disco compartido.
-          KEYCHAIN=$RUNNER_TEMP/firma.keychain-db
+          KEYCHAIN="$RUNNER_TEMP/firma.keychain-db"
           PASS=$(openssl rand -base64 24)
           security create-keychain -p "$PASS" "$KEYCHAIN"
           security set-keychain-settings -lut 900 "$KEYCHAIN"
           security unlock-keychain -p "$PASS" "$KEYCHAIN"
-          echo -n "$APPLE_CERTIFICATE" | base64 --decode -o $RUNNER_TEMP/cert.p12
-          security import $RUNNER_TEMP/cert.p12 -k "$KEYCHAIN" \
+          echo -n "$APPLE_CERTIFICATE" | base64 --decode -o "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
             -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -k "$PASS" "$KEYCHAIN"
           security list-keychain -d user -s "$KEYCHAIN"
-          rm -f $RUNNER_TEMP/cert.p12
+          rm -f "$RUNNER_TEMP/cert.p12"
 
           # Las variables de firma se declaran aqui y solo aqui. Definidas y
           # vacias no equivalen a no definidas: Tauri las lee como presentes,
@@ -234,13 +234,13 @@ jobs:
           fi
           cp "$encontrado" "artefactos/Attacca-${{ matrix.etiqueta }}.${{ matrix.extension }}"
 
-          # Manifiesto del actualizador, si se produjo.
-          for j in $(find target -name "latest.json" -path "*bundle*" 2>/dev/null); do
-            cp "$j" artefactos/
-          done
-          for s in $(find target -name "*.sig" -path "*bundle*" 2>/dev/null); do
-            cp "$s" artefactos/
-          done
+          # Manifiesto del actualizador y firmas, si se produjeron. Con -exec en
+          # lugar de recorrer la salida de find: un nombre con espacios partiria
+          # el bucle.
+          find target -path "*bundle*" -name "latest.json" \
+            -exec cp {} artefactos/ \;
+          find target -path "*bundle*" -name "*.sig" \
+            -exec cp {} artefactos/ \;
 
           # La linea de ordenes ya se dejo en `artefactos` al compilarla. Se
           # comprueba que sigue ahi antes de firmar las sumas: un paquete sin
@@ -302,7 +302,22 @@ jobs:
       - name: Comprobar que la linea de ordenes del artefacto responde
         shell: bash
         run: |
-          bin=$(ls artefactos/attacca-${{ matrix.etiqueta }}* | grep -v sha256 | head -1)
+          set -euo pipefail
+          # Con un glob en lugar de `ls | grep`: la suma de verificacion se
+          # descarta por su extension, no por una coincidencia de texto.
+          bin=""
+          for f in artefactos/attacca-${{ matrix.etiqueta }}*; do
+            # Un patron que no casa con nada se expande a si mismo.
+            [ -e "$f" ] || continue
+            case "$f" in *.sha256) continue;; esac
+            bin="$f"
+            break
+          done
+          if [ -z "$bin" ]; then
+            echo "No esta la linea de ordenes en artefactos."
+            ls -la artefactos
+            exit 1
+          fi
           chmod +x "$bin" 2>/dev/null || true
           "$bin" conformidad | head -6
 

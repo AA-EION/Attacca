@@ -96,8 +96,10 @@ jobs:
           done
 
           # Un unico archivo de sumas, para comprobar toda la descarga de una vez.
-          cat *.sha256 > SHA256SUMS.txt
-          rm -f *.sha256
+          # El prefijo ./ evita que un nombre con guion inicial se tome por una
+          # opcion de la orden.
+          cat ./*.sha256 > SHA256SUMS.txt
+          rm -f ./*.sha256
           cat SHA256SUMS.txt
 
       - name: Publicar la version

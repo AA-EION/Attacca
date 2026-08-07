@@ -34,13 +34,46 @@ corrientes con archivos de texto legibles y audio que abre cualquier programa.
 ## Arquitectura
 
 ```
-crates/attacca-core   Núcleo normativo. Sin interfaz, sin dependencias de la
-                      plataforma gráfica. 262 pruebas unitarias
-crates/attacca-cli    Línea de órdenes. Ciclo completo sin interfaz gráfica
-app/src-tauri         Aplicación de escritorio: superficie de órdenes
-app/ui                Interfaz. Todo el texto visible en textos.js
-docs/                 Conformidad, extensiones y comprobación de anexos
+crates/attacca-core     Núcleo normativo. Sin interfaz, sin dependencias de la
+                        plataforma gráfica. 264 pruebas unitarias
+crates/attacca-ordenes  Estado de la sesión y las 38 órdenes que una interfaz
+                        puede pedir. Sin plataforma gráfica
+crates/attacca-ffi      Puente de C sobre las órdenes, para interfaces nativas
+crates/attacca-cli      Línea de órdenes. Ciclo completo sin interfaz gráfica
+app/src-tauri           Aplicación de escritorio: declara las órdenes ante Tauri
+app/ui                  Interfaz. Todo el texto visible en textos.js
+app/macos               Interfaz nativa de macOS, con Liquid Glass en 26 y
+                        posteriores. Véase docs/MACOS-SWIFT.md
+docs/                   Conformidad, extensiones y comprobación de anexos
 ```
+
+### Una sola capa de órdenes
+
+Las tres interfaces —la de Tauri, la nativa de macOS y la línea de órdenes—
+llaman a las mismas funciones de `attacca-ordenes`, con los mismos nombres y los
+mismos argumentos. Ninguna toma decisiones normativas. Una orden implementada
+dos veces acabaría comportándose de dos maneras; implementada una sola vez, no
+puede.
+
+### La interfaz habla llano
+
+El vocabulario de la norma es el que hay que emplear para citarla, auditarla y
+entenderse con otra implementación. No es el que hay que emplear en un botón.
+Quien está grabando no tiene por qué saber qué es un manifiesto, ni una
+custodia, ni un presupuesto de ruta, para que la aplicación le sirva.
+
+El texto visible tiene por eso dos registros, y no se mezclan:
+
+| | Dónde aparece | Ejemplo |
+|---|---|---|
+| Llano | Todo el recorrido de trabajo | «Dejar el proyecto a otro estudio» |
+| Normativo | Sección de detalle y ficha técnica | «Ceder custodia», apartado 41 |
+
+Los dos están en un solo archivo por interfaz —`app/ui/textos.js` y
+`app/macos/Sources/AttaccaKit/Textos.swift`— y `scripts/auditar-redaccion.py`
+los comprueba en cada cambio: prohíbe la jerga en el registro llano, exige el
+vocabulario del apartado 3 literal en el normativo, y falla si el núcleo ofrece
+una acción que ningún registro sabe nombrar.
 
 ### El árbol es la fuente de verdad
 
@@ -57,7 +90,8 @@ attacca listar          # el índice se reconstruye por completo
 
 Attacca no muestra un árbol de carpetas. Muestra, en cada momento, la carpeta
 correspondiente a la etapa activa del proyecto y las acciones admisibles en
-ella, conforme al Anexo I.
+ella, conforme al Anexo I. En la pantalla eso se traduce en una frase con lo que
+toca hacer, un botón para hacerlo y los archivos de esa carpeta.
 
 La etapa se deduce del manifiesto y del contenido real, no de una preferencia
 guardada en la interfaz. El resto de la estructura sigue siendo alcanzable, y la
@@ -102,8 +136,8 @@ sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev \
 ```
 
 ```
-cargo build --release              # las tres piezas
-cargo test                         # 278 pruebas
+cargo build --release              # todas las piezas
+cargo test                         # 293 pruebas
 cargo run -p attacca-cli -- --help
 ```
 
@@ -113,6 +147,16 @@ Paquete de instalación por plataforma:
 cargo install tauri-cli --version "^2"
 cargo tauri build
 ```
+
+En macOS, además, la interfaz nativa:
+
+```
+./app/macos/construir.sh --pruebas   # Attacca.app universal, con sus pruebas
+```
+
+Requiere Xcode 26 o posterior para que Liquid Glass se compile. Con un Xcode
+anterior el paquete se produce igual, con los materiales antiguos. El detalle
+está en [`docs/MACOS-SWIFT.md`](docs/MACOS-SWIFT.md).
 
 ---
 
@@ -170,8 +214,10 @@ Lo que está comprobado de extremo a extremo:
 
 El flujo de integración y publicación comprueba, además, en cada cambio y en
 las tres plataformas: formato y clippy sin avisos, el presupuesto de arranque en
-frío, las reglas de redacción de la interfaz, que el `.dmg` contenga las dos
-arquitecturas, y que el AppImage arranque y siga vivo bajo una pantalla virtual.
+frío, las reglas de redacción de las dos interfaces, que el `.dmg` contenga las
+dos arquitecturas, que el `Attacca.app` nativo contenga las dos y tenga el
+puente enlazado, y que el AppImage arranque y siga vivo bajo una pantalla
+virtual.
 
 Lo que falta para una publicación:
 

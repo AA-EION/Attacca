@@ -1,0 +1,7 @@
+// El encabezado es una copia del que produce `crates/attacca-ffi`. Que sean
+// idénticos lo comprueba `construir.sh` antes de compilar nada: un encabezado
+// desfasado enlazaría contra símbolos que ya no existen.
+module CAttacca {
+    header "include/attacca.h"
+    export *
+}

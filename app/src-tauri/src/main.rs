@@ -1,7 +1,6 @@
 // Sin consola en Windows en compilación de producción.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod estado;
 mod ordenes;
 
 fn main() {
@@ -20,7 +19,7 @@ fn main() {
     let constructor = constructor.plugin(tauri_plugin_updater::Builder::new().build());
 
     constructor
-        .manage(estado::Estado::default())
+        .manage(attacca_ordenes::estado::Estado::default())
         .invoke_handler(tauri::generate_handler![
             ordenes::raiz_sugerida,
             ordenes::abrir_repositorio,

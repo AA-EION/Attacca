@@ -1,0 +1,20 @@
+[package]
+name = "attacca-ffi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Attacca. Puente de C sobre la capa de órdenes, para interfaces nativas."
+
+[lib]
+name = "attacca_ffi"
+# `staticlib` es lo que enlaza la aplicación de macOS: un archivo `.a` por
+# arquitectura que `lipo` funde en uno universal. `rlib` mantiene el crate
+# comprobable desde el propio espacio de trabajo.
+crate-type = ["staticlib", "rlib"]
+
+[dependencies]
+attacca-core = { workspace = true }
+attacca-ordenes = { workspace = true }
+serde_json = { workspace = true }

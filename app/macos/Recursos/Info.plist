@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleName</key>
+  <string>Attacca</string>
+  <key>CFBundleDisplayName</key>
+  <string>Attacca</string>
+  <key>CFBundleIdentifier</key>
+  <string>org.stave.attacca.nativa</string>
+  <key>CFBundleExecutable</key>
+  <string>Attacca</string>
+  <key>CFBundlePackageType</key>
+  <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>0.1.0</string>
+  <key>CFBundleVersion</key>
+  <string>1</string>
+  <key>CFBundleIconFile</key>
+  <string>Attacca</string>
+
+  <!-- La aplicación funciona desde macOS 14. Liquid Glass aparece en 26; en 14
+       y en 15 se presenta con los materiales de esas versiones. Lo decide la
+       comprobación de disponibilidad de Cristal.swift. -->
+  <key>LSMinimumSystemVersion</key>
+  <string>14.0</string>
+
+  <key>NSHighResolutionCapable</key>
+  <true/>
+  <key>LSApplicationCategoryType</key>
+  <string>public.app-category.music</string>
+  <key>NSHumanReadableCopyright</key>
+  <string>Publicado bajo licencia Apache-2.0</string>
+
+  <!-- No se declara UIDesignRequiresCompatibility. Esa clave es la renuncia
+       temporal a Liquid Glass, solo existe en iOS y caduca con la versión
+       siguiente del sistema; adoptar el material desde el principio evita
+       tener que retirarla después. -->
+</dict>
+</plist>

@@ -3,10 +3,17 @@
 // Ningún texto visible se escribe aquí: todo procede de `textos.js`, para que
 // las reglas de redacción se puedan auditar en un solo archivo.
 //
-// La vista de contexto único es la decisión central: en cada momento se presenta
-// la carpeta correspondiente a la etapa activa del proyecto y las acciones
-// admisibles en ella. La etapa la deduce el núcleo del manifiesto y del
-// contenido real, nunca de una preferencia guardada aquí.
+// La decisión central sigue siendo la del apartado 44.2: en cada momento se
+// presenta la carpeta correspondiente a la fase activa del proyecto y las
+// acciones admisibles en ella, y la fase la deduce el núcleo del manifiesto y
+// del contenido real, nunca una preferencia guardada aquí.
+//
+// Lo que cambia respecto de la versión anterior es el reparto de la atención.
+// Antes la pantalla de un proyecto mostraba cinco paneles del mismo peso, uno
+// de ellos una lista de apartados de la norma. Ahora muestra una frase con lo
+// que toca hacer, un botón para hacerlo, los archivos de la fase, y todo lo
+// demás plegado. La información normativa no se ha quitado: está en la sección
+// de detalle, entera y con su vocabulario, a un clic de distancia.
 
 import { T, fmt, plural } from "./textos.js";
 
@@ -15,18 +22,33 @@ const dialogo = window.__TAURI__.dialog;
 
 // --- Estado de la interfaz. Nada de esto es normativo. ---
 const ui = {
-  ruta: "catalogo", // catalogo | proyecto | recepcion | registro | preferencias
-  proyecto: null, // VistaProyecto
-  carpeta: "", // carpeta relativa que muestra el navegador
+  ruta: "proyectos", // proyectos | proyecto | recibido | historial | ajustes
+  proyecto: null,
+  carpeta: "",
   catalogo: null,
   reloj: null,
   repositorio: null,
 };
 
+// El recorrido habitual de un tema, en orden. Las dos fases que quedan fuera
+// —el envío a otro estudio y el material recibido— no pertenecen a esta línea
+// y se presentan solas.
+const RECORRIDO = [
+  "composicion",
+  "preproduccion",
+  "grabacion",
+  "edicion",
+  "mezcla",
+  "mastering",
+  "control_calidad",
+  "distribucion",
+  "archivo",
+];
+
 const $ = (sel) => document.querySelector(sel);
 const vista = () => $("#vista");
 
-// --- Utilidades de construcción sin plantillas de cadena ---
+// --- Construcción de nodos, sin plantillas de cadena ---
 
 function el(etiqueta, atributos = {}, hijos = []) {
   const n = document.createElement(etiqueta);
@@ -38,7 +60,7 @@ function el(etiqueta, atributos = {}, hijos = []) {
     else n.setAttribute(k, v === true ? "" : String(v));
   }
   for (const h of [].concat(hijos)) {
-    if (h === null || h === undefined) continue;
+    if (h === null || h === undefined || h === false) continue;
     n.appendChild(typeof h === "string" ? document.createTextNode(h) : h);
   }
   return n;
@@ -49,9 +71,19 @@ function boton(texto, alPulsar, opciones = {}) {
   if (opciones.atajo) hijos.push(el("kbd", { texto: opciones.atajo }));
   return el(
     "button",
-    { clase: opciones.clase || "", onclick: alPulsar, disabled: opciones.desactivado },
+    {
+      clase: opciones.clase || "",
+      onclick: alPulsar,
+      disabled: opciones.desactivado,
+      "aria-pressed": opciones.pulsado === undefined ? null : String(opciones.pulsado),
+      "aria-current": opciones.actual ? "page" : null,
+    },
     hijos
   );
+}
+
+function marca(texto, clase = "") {
+  return el("span", { clase: "marca-estado " + clase, texto });
 }
 
 function campo(etiqueta, control, nota) {
@@ -64,12 +96,24 @@ function campo(etiqueta, control, nota) {
   ]);
 }
 
+function campoMarca(etiqueta, control, nota) {
+  return el("div", { clase: "campo campo-marca" }, [
+    el("label", {}, [control, el("span", { texto: etiqueta })]),
+    nota ? el("p", { clase: "nota", texto: nota }) : null,
+  ]);
+}
+
 function seleccion(opciones, valorInicial) {
   const s = el("select");
   for (const [valor, texto] of opciones) {
     s.appendChild(el("option", { value: valor, texto, selected: valor === valorInicial }));
   }
   return s;
+}
+
+/// Opciones a partir de un bloque de textos, con el código fuera de la vista.
+function opcionesDe(bloque, orden) {
+  return orden.map((clave) => [clave, bloque[clave] || clave]);
 }
 
 function bytesLegibles(n) {
@@ -84,23 +128,28 @@ function bytesLegibles(n) {
   return v.toFixed(v < 10 ? 1 : 0) + " " + u[i];
 }
 
-// --- Errores. El núcleo los redacta con los tres elementos. ---
+// --- Llamadas al núcleo ---
 
 async function llamar(orden, argumentos) {
   try {
     return await invoke(orden, argumentos);
   } catch (e) {
-    mostrarError(String(e));
+    avisar({ texto: String(e), tono: "malo" });
     return null;
   }
 }
 
-function mostrarError(texto) {
+/// Un aviso de una sola frase. El tono decide el color, no el texto.
+function avisar({ titulo, texto, tono = "neutro" }) {
   const d = $("#diálogo");
   d.replaceChildren(
-    el("h2", { texto: T.app.nombre }),
-    el("div", { clase: "aviso-error" }, [el("p", { texto })]),
-    el("div", { clase: "pie" }, [boton(T.accion.cerrar, () => d.close(), { clase: "principal" })])
+    el("h2", { texto: titulo || T.app.nombre }),
+    el("div", { clase: "aviso " + (tono === "neutro" ? "bueno" : tono) }, [
+      el("p", { texto }),
+    ]),
+    el("div", { clase: "pie" }, [
+      boton(T.accion.cerrar, () => d.close(), { clase: "principal" }),
+    ])
   );
   d.showModal();
 }
@@ -108,13 +157,12 @@ function mostrarError(texto) {
 function confirmar({ titulo, aviso, detalle, etiquetaConfirmar, campos = [] }) {
   return new Promise((resolver) => {
     const d = $("#diálogo");
-    const controles = campos.map((c) => c.nodo);
     d.replaceChildren(
       el("h2", { texto: titulo }),
-      // La acción irreversible se anuncia en una frase, antes de ejecutarla.
-      aviso ? el("div", { clase: "aviso-irreversible" }, [el("p", { texto: aviso })]) : null,
+      // Lo irreversible se anuncia en una frase, antes de ejecutarlo.
+      aviso ? el("div", { clase: "aviso" }, [el("p", { texto: aviso })]) : null,
       detalle ? el("p", { clase: "nota", texto: detalle }) : null,
-      ...controles,
+      ...campos.map((c) => c.nodo),
       el("div", { clase: "pie" }, [
         boton(T.accion.cancelar, () => {
           d.close();
@@ -133,92 +181,81 @@ function confirmar({ titulo, aviso, detalle, etiquetaConfirmar, campos = [] }) {
       ])
     );
     d.showModal();
+    const primero = d.querySelector("input, select, textarea");
+    if (primero) primero.focus();
   });
 }
 
-// --- Barra de estado permanente ---
+// --- Barra permanente ---
+//
+// El apartado 44.2 exige que la fase, el estado de custodia y el de réplica se
+// consulten sin ninguna acción. Aquí están los tres, en llano y sin nada más
+// que compita con ellos.
 
-function pintarEstado() {
-  const f = $("#estado");
-  const partes = [];
+function pintarSituacion() {
+  const f = $("#situacion");
   const p = ui.proyecto;
+  const partes = [];
 
   if (p) {
-    partes.push(dato(T.rotulo.etapa, T.etapa[p.etapa] || p.etapa));
-    partes.push(dato(T.rotulo.custodia, T.custodia[p.resumen.custodia] || p.resumen.custodia));
+    partes.push(dato(T.rotulo.fase, T.fase[p.etapa] || p.etapa));
+    partes.push(dato(T.rotulo.donde, T.donde[p.resumen.custodia] || p.resumen.custodia));
     const rep = p.replicas.find((r) => r.volumen === p.replica_activa);
-    partes.push(dato(T.rotulo.replica, rep ? T.replica[rep.estado] : T.replica.activa));
-    partes.push(dato(T.rotulo.nivel, p.resumen.nivel));
-    partes.push(distintivoConformidad(p.conformidad));
-    // Cifras antes que valoraciones.
-    partes.push(
-      dato(
-        T.rotulo.presupuesto_ruta,
-        fmt(T.aviso.presupuesto_ruta, {
-          actual: p.presupuesto_ruta.actual,
-          limite: p.presupuesto_ruta.limite,
-        }),
-        p.presupuesto_ruta.excedido ? "incumplimiento" : null
-      )
-    );
+    partes.push(dato(T.rotulo.disco, rep ? T.disco[rep.estado] : T.disco.activa));
   }
 
-  if (ui.reloj) {
-    const r = ui.reloj;
-    const valor =
-      r.estado === "synced"
-        ? r.desviacion_ms + " ms"
-        : r.estado === "drifted"
-          ? Math.round(r.desviacion_ms / 1000) + " s"
-          : "sin fuente";
-    partes.push(dato(T.rotulo.reloj, valor, r.admite_emision ? null : "pendiente"));
+  // El reloj solo se nombra cuando impide algo. Un dato correcto no necesita
+  // ocupar sitio permanente.
+  if (ui.reloj && !ui.reloj.admite_emision) {
+    partes.push(
+      el("span", {
+        clase: "aviso",
+        texto:
+          ui.reloj.estado === "unavailable"
+            ? T.ajustes.hora_sin
+            : fmt(T.ajustes.hora_mal, { s: Math.round(ui.reloj.desviacion_ms / 1000) }),
+      })
+    );
   }
 
   f.replaceChildren(...partes);
 }
 
-function dato(clave, valor, clase) {
+function dato(clave, valor) {
   return el("span", { clase: "dato" }, [
     el("span", { clase: "clave", texto: clave }),
-    el("span", { clase: "valor" + (clase ? " distintivo " + clase : ""), texto: valor }),
+    el("span", { clase: "valor", texto: valor }),
   ]);
-}
-
-function distintivoConformidad(c) {
-  // Tres cosas que no se confunden: pendiente, incumplimiento y excepción.
-  if (c.incumplimientos > 0) {
-    return dato(
-      T.rotulo.conformidad,
-      plural(c.incumplimientos, T.conformidad.incumplimiento_uno, T.conformidad.incumplimiento_varios),
-      "incumplimiento"
-    );
-  }
-  if (c.pendientes > 0) {
-    return dato(
-      T.rotulo.conformidad,
-      plural(c.pendientes, T.conformidad.pendiente_uno, T.conformidad.pendiente_varios),
-      "pendiente"
-    );
-  }
-  if (c.excepciones > 0) {
-    return dato(
-      T.rotulo.conformidad,
-      plural(c.excepciones, T.conformidad.excepcion_una, T.conformidad.excepcion_varias),
-      "excepcion"
-    );
-  }
-  return dato(T.rotulo.conformidad, T.conformidad.conforme, "conforme");
 }
 
 // --- Navegación ---
 
 function pintarNav() {
   const n = $("#nav");
+  const pendientes = ui.catalogo ? ui.catalogo.paquetes_en_cuarentena : 0;
+
+  const recibido = boton(T.seccion.recibido, () => ir("recibido"), {
+    clase: "tenue",
+    actual: ui.ruta === "recibido",
+  });
+  if (pendientes > 0) {
+    recibido.appendChild(el("span", { clase: "cuenta", texto: String(pendientes) }));
+  }
+
   n.replaceChildren(
-    boton("Proyectos", () => ir("catalogo")),
-    boton(T.recepcion.titulo, () => ir("recepcion")),
-    boton("Registro", () => ir("registro")),
-    boton(T.preferencias.titulo, () => ir("preferencias"))
+    boton(T.seccion.proyectos, () => ir("proyectos"), {
+      clase: "tenue",
+      actual: ui.ruta === "proyectos" || ui.ruta === "proyecto",
+    }),
+    recibido,
+    boton(T.seccion.historial, () => ir("historial"), {
+      clase: "tenue",
+      actual: ui.ruta === "historial",
+    }),
+    boton(T.seccion.ajustes, () => ir("ajustes"), {
+      clase: "tenue",
+      actual: ui.ruta === "ajustes",
+    })
   );
 }
 
@@ -230,46 +267,40 @@ async function ir(ruta, argumento) {
   }
   if (ruta !== "proyecto") ui.proyecto = null;
   await pintar();
+  vista().focus();
 }
 
 async function pintar() {
-  pintarNav();
   const v = vista();
-  switch (ui.ruta) {
-    case "catalogo":
-      v.replaceChildren(await pintarCatalogo());
-      break;
-    case "proyecto":
-      v.replaceChildren(await pintarProyecto());
-      break;
-    case "recepcion":
-      v.replaceChildren(await pintarRecepcion());
-      break;
-    case "registro":
-      v.replaceChildren(await pintarRegistro());
-      break;
-    case "preferencias":
-      v.replaceChildren(await pintarPreferencias());
-      break;
-  }
-  pintarEstado();
+  const contenido = await {
+    proyectos: pintarProyectos,
+    proyecto: pintarProyecto,
+    recibido: pintarRecibido,
+    historial: pintarHistorial,
+    ajustes: pintarAjustes,
+  }[ui.ruta]();
+  v.replaceChildren(el("div", { clase: "limite" }, [contenido]));
+  pintarNav();
+  pintarSituacion();
 }
 
-// --- Catálogo ---
+// --- Lista de proyectos ---
 
-async function pintarCatalogo() {
+async function pintarProyectos() {
   ui.catalogo = await llamar("catalogo");
   const c = ui.catalogo;
   const cont = el("div");
 
   cont.appendChild(
-    el("div", { clase: "etapa-titulo" }, [
-      el("h1", { texto: "Proyectos" }),
-      boton(T.accion.crear_proyecto, dialogoCrearProyecto, {
-        clase: "principal",
-        atajo: T.atajo.crear_proyecto,
-      }),
-      boton(T.accion.crear_release, dialogoCrearRelease),
+    el("div", { clase: "portada" }, [
+      el("div", {}, [el("h1", { texto: T.seccion.proyectos })]),
+      el("div", { clase: "derecha" }, [
+        boton(T.accion.crear_release, dialogoCrearLanzamiento),
+        boton(T.accion.crear_proyecto, dialogoCrearProyecto, {
+          clase: "principal",
+          atajo: T.atajo.crear_proyecto,
+        }),
+      ]),
     ])
   );
 
@@ -277,172 +308,182 @@ async function pintarCatalogo() {
 
   if (c.atraso_cuarentena > 0) {
     cont.appendChild(
-      el("div", { clase: "panel" }, [
-        el("p", { texto: fmt(T.aviso.cuarentena_con_atraso, { n: c.atraso_cuarentena }) }),
+      el("div", { clase: "aviso" }, [
+        el("p", { texto: fmt(T.recibido.atraso, { n: c.atraso_cuarentena }) }),
       ])
     );
   }
 
+  // Un manifiesto ilegible no se oculta: es lo único que puede dejar material
+  // fuera del alcance de la aplicación.
   if (c.ilegibles.length > 0) {
-    const lista = el("ul", { clase: "hallazgos" });
-    for (const [ruta, motivo] of c.ilegibles) {
-      lista.appendChild(
-        el("li", {}, [
-          el("span", { clase: "distintivo incumplimiento", texto: "no legible" }),
-          el("span", { clase: "mono", texto: ruta }),
-          el("span", { texto: motivo }),
-        ])
-      );
-    }
-    cont.appendChild(el("section", { clase: "panel" }, [el("h2", { texto: "Manifiestos" }), lista]));
+    cont.appendChild(
+      el("div", { clase: "aviso malo" }, [
+        el("p", {
+          texto: plural(
+            c.ilegibles.length,
+            "Hay 1 carpeta que no se ha podido leer.",
+            "Hay {n} carpetas que no se han podido leer."
+          ),
+        }),
+        el("p", { clase: "mono", texto: c.ilegibles.map(([r]) => r).join("  ") }),
+      ])
+    );
   }
 
   if (c.proyectos.length === 0) {
-    cont.appendChild(el("p", { clase: "vacio", texto: T.vacio.sin_proyectos }));
+    cont.appendChild(
+      el("div", { clase: "vacio" }, [
+        el("p", { clase: "principal-texto", texto: T.vacio.sin_proyectos }),
+        el("p", { texto: T.vacio.primer_proyecto }),
+      ])
+    );
     return cont;
   }
 
-  const tbody = el("tbody");
+  const rejilla = el("div", { clase: "rejilla" });
   for (const p of c.proyectos) {
-    tbody.appendChild(
-      el(
-        "tr",
-        { tabindex: "0", onclick: () => ir("proyecto", p.uid), onkeydown: (e) => e.key === "Enter" && ir("proyecto", p.uid) },
-        [
-          el("td", {}, [el("div", { texto: p.titulo || p.id }), el("div", { clase: "mono", texto: p.id })]),
-          el("td", { texto: p.artista }),
-          el("td", { texto: T.etapa[p.etapa] || p.etapa }),
-          el("td", {}, [
-            el("span", {
-              clase: "distintivo " + (p.custodia === "propia" || p.custodia === "reclamada" ? "neutro" : "pendiente"),
-              texto: T.custodia[p.custodia] || p.custodia,
-            }),
-          ]),
-          el("td", { texto: T.estado_proyecto[p.estado] || p.estado }),
-          el("td", { clase: "cifra", texto: p.nivel }),
-        ]
-      )
-    );
+    rejilla.appendChild(tarjetaProyecto(p));
   }
-
-  cont.appendChild(
-    el("section", { clase: "panel" }, [
-      el("table", {}, [
-        el("thead", {}, [
-          el("tr", {}, [
-            el("th", { texto: T.rotulo.titulo }),
-            el("th", { texto: T.rotulo.artista }),
-            el("th", { texto: T.rotulo.etapa }),
-            el("th", { texto: T.rotulo.custodia }),
-            el("th", { texto: "Estado" }),
-            el("th", { texto: T.rotulo.nivel }),
-          ]),
-        ]),
-        tbody,
-      ]),
-    ])
-  );
+  cont.appendChild(rejilla);
 
   if (c.releases.length > 0) {
-    const rb = el("tbody");
+    cont.appendChild(el("h2", { clase: "rotulo", texto: T.seccion.lanzamientos }));
+    const rej = el("div", { clase: "rejilla" });
     for (const r of c.releases) {
-      rb.appendChild(
-        el("tr", {}, [
-          el("td", {}, [el("div", { texto: r.titulo }), el("div", { clase: "mono", texto: r.id })]),
-          el("td", { texto: r.artista }),
-          el("td", { texto: r.clase }),
-          el("td", { clase: "cifra", texto: String(r.temas) }),
+      rej.appendChild(
+        el("div", { clase: "proyecto" }, [
+          el("div", { clase: "nombre", texto: r.titulo }),
+          el("div", { clase: "artista", texto: r.artista }),
+          el("div", { clase: "pie" }, [
+            marca(T.clase_lanzamiento[r.clase] || r.clase, "liso"),
+            el("span", {
+              clase: "artista cifra",
+              texto: plural(r.temas, "1 tema", "{n} temas"),
+            }),
+          ]),
         ])
       );
     }
-    cont.appendChild(
-      el("section", { clase: "panel" }, [
-        el("h2", { texto: "Releases" }),
-        el("table", {}, [
-          el("thead", {}, [
-            el("tr", {}, [
-              el("th", { texto: T.rotulo.titulo }),
-              el("th", { texto: T.rotulo.artista }),
-              el("th", { texto: T.rotulo.clase }),
-              el("th", { texto: T.rotulo.tracklist }),
-            ]),
-          ]),
-          rb,
-        ]),
-      ])
-    );
+    cont.appendChild(rej);
   }
 
   return cont;
 }
 
-// --- Creación de proyecto. Cinco campos y nada más. ---
+function tarjetaProyecto(p) {
+  const abrir = () => ir("proyecto", p.uid);
+  return el(
+    "button",
+    {
+      clase: "proyecto",
+      onclick: abrir,
+      title: p.titulo || p.id,
+    },
+    [
+      el("div", { clase: "nombre", texto: p.titulo || p.id }),
+      el("div", { clase: "artista", texto: p.artista }),
+      el("div", { clase: "pie" }, marcasDeProyecto(p)),
+    ]
+  );
+}
+
+/// Una o dos marcas por proyecto. La primera dice dónde está el trabajo; la
+/// segunda solo aparece cuando hay algo que atender.
+function marcasDeProyecto(p) {
+  const out = [];
+  if (p.custodia !== "propia") {
+    out.push(marca(T.donde[p.custodia] || p.custodia, "pendiente"));
+  } else if (p.estado === "sealed" || p.estado === "archived" || p.estado === "delivered") {
+    out.push(marca(T.situacion[p.estado] || p.estado, "liso"));
+  } else {
+    out.push(marca(T.fase[p.etapa] || p.etapa, "fase"));
+  }
+  if (p.estado === "onhold") out.push(marca(T.situacion.onhold, "liso"));
+  return out;
+}
+
+// --- Crear proyecto ---
+//
+// La calidad de grabación era antes dos desplegables de números. Es un solo
+// campo con cuatro opciones nombradas por su uso, porque quien graba elige por
+// el uso y no por la cifra. La cifra sigue estando, detrás de la coma.
+
+const CALIDADES = [
+  ["48000-24", "calidad_estandar"],
+  ["96000-24", "calidad_alta"],
+  ["48000-32", "calidad_cine"],
+  ["44100-24", "calidad_cd"],
+];
 
 async function dialogoCrearProyecto() {
   const artista = el("input", { type: "text", autofocus: true });
   const titulo = el("input", { type: "text" });
   const tipo = seleccion(
-    [
-      ["ORIG", "ORIG — obra original"],
-      ["COVER", "COVER — versión de obra ajena"],
-      ["REMIX", "REMIX — remezcla"],
-      ["BEAT", "BEAT — pista instrumental"],
-      ["MIX", "MIX — solo mezcla para terceros"],
-      ["MST", "MST — solo mastering"],
-      ["SD", "SD — diseño sonoro"],
-      ["LIVE", "LIVE — registro en directo"],
-      ["DEMO", "DEMO — maqueta"],
-      ["SYNC", "SYNC — encargo audiovisual"],
-    ],
+    opcionesDe(T.tipo, [
+      "ORIG",
+      "COVER",
+      "REMIX",
+      "BEAT",
+      "MIX",
+      "MST",
+      "SD",
+      "LIVE",
+      "DEMO",
+      "SYNC",
+    ]),
     "ORIG"
+  );
+  const calidad = seleccion(
+    CALIDADES.map(([v, clave]) => [v, T.creacion[clave]]),
+    "48000-24"
   );
   const releases = ui.catalogo ? ui.catalogo.releases : [];
   const release = seleccion(
     [["", T.creacion.campo_release_ninguno]].concat(releases.map((r) => [r.uid, r.titulo])),
     ""
   );
-  const frecuencia = seleccion(
-    [44100, 48000, 88200, 96000, 176400, 192000].map((v) => [String(v), v + " Hz"]),
-    "48000"
-  );
-  const bits = seleccion([["24", "24 bits"], ["32", "32 bits"]], "24");
+
+  const campos = [
+    { clave: "artista", nodo: campo(T.creacion.campo_artista, artista), leer: () => artista.value },
+    {
+      clave: "titulo",
+      nodo: campo(T.creacion.campo_titulo, titulo, T.creacion.nota_titulo),
+      leer: () => titulo.value,
+    },
+    { clave: "tipo", nodo: campo(T.creacion.campo_tipo, tipo), leer: () => tipo.value },
+    {
+      clave: "calidad",
+      nodo: campo(T.creacion.campo_calidad, calidad, T.creacion.nota_calidad),
+      leer: () => calidad.value,
+    },
+  ];
+  // El lanzamiento solo se pregunta cuando hay alguno al que vincular.
+  if (releases.length > 0) {
+    campos.push({
+      clave: "release",
+      nodo: campo(T.creacion.campo_release, release),
+      leer: () => release.value,
+    });
+  }
 
   const r = await confirmar({
     titulo: T.creacion.titulo,
-    detalle: T.creacion.nota_campos_pendientes,
+    detalle: T.creacion.nota_resto,
     etiquetaConfirmar: T.accion.crear_proyecto,
-    campos: [
-      { clave: "artista", nodo: campo(T.creacion.campo_artista, artista), leer: () => artista.value },
-      {
-        clave: "titulo",
-        nodo: campo(T.creacion.campo_titulo, titulo, T.creacion.nota_titulo),
-        leer: () => titulo.value,
-      },
-      { clave: "tipo", nodo: campo(T.creacion.campo_tipo, tipo), leer: () => tipo.value },
-      { clave: "release", nodo: campo(T.creacion.campo_release, release), leer: () => release.value },
-      {
-        clave: "frecuencia",
-        nodo: campo(T.creacion.campo_frecuencia, frecuencia),
-        leer: () => Number(frecuencia.value),
-      },
-      {
-        clave: "bits",
-        // La razón de que no se puedan cambiar después, en una línea.
-        nodo: campo(T.creacion.campo_bits, bits, T.creacion.nota_audio),
-        leer: () => Number(bits.value),
-      },
-    ],
+    campos,
   });
   if (!r) return;
 
+  const [frecuencia, bits] = r.calidad.split("-").map(Number);
   const p = await llamar("crear_proyecto", {
     datos: {
       titulo: r.titulo,
       artista: r.artista,
       tipo: r.tipo,
       nivel: "B",
-      frecuencia: r.frecuencia,
-      bits: r.bits,
+      frecuencia,
+      bits,
       release_uid: r.release || null,
     },
   });
@@ -454,18 +495,11 @@ async function dialogoCrearProyecto() {
   }
 }
 
-async function dialogoCrearRelease() {
+async function dialogoCrearLanzamiento() {
   const artista = el("input", { type: "text", autofocus: true });
   const titulo = el("input", { type: "text" });
   const clase = seleccion(
-    [
-      ["SINGLE", "SINGLE — sencillo"],
-      ["EP", "EP — extended play"],
-      ["ALBUM", "ALBUM — álbum"],
-      ["COMP", "COMP — recopilación"],
-      ["LIVE", "LIVE — registro en directo"],
-      ["SYNC", "SYNC — obra audiovisual"],
-    ],
+    opcionesDe(T.clase_lanzamiento, ["SINGLE", "EP", "ALBUM", "COMP", "LIVE", "SYNC"]),
     "SINGLE"
   );
   const r = await confirmar({
@@ -474,7 +508,7 @@ async function dialogoCrearRelease() {
     campos: [
       { clave: "artista", nodo: campo(T.creacion.campo_artista, artista), leer: () => artista.value },
       { clave: "titulo", nodo: campo(T.creacion.campo_titulo, titulo), leer: () => titulo.value },
-      { clave: "clase", nodo: campo(T.rotulo.clase, clase), leer: () => clase.value },
+      { clave: "clase", nodo: campo(T.rotulo.tipo, clase), leer: () => clase.value },
     ],
   });
   if (!r) return;
@@ -484,217 +518,347 @@ async function dialogoCrearRelease() {
   if (uid) await pintar();
 }
 
-// --- Vista de contexto único ---
+// --- Vista de un proyecto ---
 
 async function pintarProyecto() {
   const p = ui.proyecto;
-  if (!p) return el("p", { clase: "vacio", texto: T.vacio.sin_proyectos });
+  if (!p) return el("p", { clase: "sin-nada", texto: T.vacio.sin_proyectos });
 
   const cont = el("div");
+
   cont.appendChild(
-    el("div", { clase: "etapa-titulo" }, [
-      el("h1", { texto: p.resumen.titulo || p.resumen.id }),
-      el("span", { clase: "distintivo neutro", texto: T.etapa[p.etapa] || p.etapa }),
-      boton(T.accion.volver, () => ir("catalogo"), { atajo: T.atajo.volver }),
+    el("div", { clase: "portada" }, [
+      el("div", {}, [
+        el("h1", { texto: p.resumen.titulo || p.resumen.id }),
+        el("p", { clase: "sub", texto: p.resumen.artista }),
+      ]),
+      el("div", { clase: "derecha" }, [
+        boton(T.accion.volver, () => ir("proyectos"), { clase: "tenue", atajo: T.atajo.volver }),
+        boton(
+          T.accion.abrir_en_explorador,
+          () => llamar("abrir_en_explorador", { uid: p.resumen.uid, relativa: ui.carpeta }),
+          { atajo: T.atajo.abrir_en_explorador }
+        ),
+      ]),
     ])
   );
 
+  cont.appendChild(recorridoDeFases(p));
+
+  const avisoPlazo = avisoDePlazo(p);
+  if (avisoPlazo) cont.appendChild(avisoPlazo);
+
   const izquierda = el("div");
+  izquierda.appendChild(panelAhora(p));
+  izquierda.appendChild(await panelArchivos(p));
+
   const derecha = el("div");
-
-  // Carpeta de la etapa activa. Al cambiar de contexto se cierra la vista
-  // anterior; ningún archivo abierto por otro programa se toca.
-  izquierda.appendChild(await panelCarpeta(p));
-  izquierda.appendChild(panelIdentidad(p));
-  izquierda.appendChild(panelConformidad(p));
-
-  derecha.appendChild(panelAcciones(p));
+  const falta = panelFalta(p);
+  if (falta) derecha.appendChild(falta);
   derecha.appendChild(panelOtrasCarpetas(p));
 
-  cont.appendChild(el("div", { clase: "contexto" }, [izquierda, derecha]));
+  cont.appendChild(el("div", { clase: "doble" }, [izquierda, derecha]));
+  cont.appendChild(detalleTecnico(p));
   return cont;
 }
 
-async function panelCarpeta(p) {
-  const entradas = (await llamar("listar_carpeta", { uid: p.resumen.uid, relativa: ui.carpeta })) || [];
+/// La fase, como un recorrido. Reemplaza a la palabra suelta «Etapa: mezcla»:
+/// dice también qué ha quedado atrás y qué viene.
+function recorridoDeFases(p) {
+  const cont = el("div", { clase: "recorrido" });
+  const actual = RECORRIDO.indexOf(p.etapa);
 
-  const selector = el("div", { clase: "acciones" });
-  const fila = el("div", { clase: "etapa-titulo" }, [
-    el("h2", { texto: T.contexto.carpeta_presentada }),
+  if (actual < 0) {
+    // Fase fuera del recorrido habitual: se presenta sola.
+    cont.appendChild(
+      el("span", { clase: "hito actual" }, [
+        el("span", { clase: "punto" }),
+        el("span", { texto: T.fase[p.etapa] || p.etapa }),
+      ])
+    );
+    return cont;
+  }
+
+  RECORRIDO.forEach((clave, i) => {
+    if (i > 0) cont.appendChild(el("span", { clase: "union" }));
+    const estado = i < actual ? "hecho" : i === actual ? "actual" : "";
+    cont.appendChild(
+      el("span", { clase: "hito " + estado }, [
+        el("span", { clase: "punto" }),
+        el("span", { texto: T.fase[clave] }),
+      ])
+    );
+  });
+  return cont;
+}
+
+function avisoDePlazo(p) {
+  if (!p.vencimiento || p.vencimiento.situacion === "current") return null;
+  const texto =
+    p.vencimiento.situacion === "reclaim_available" ? T.plazo.margen_vencido : T.plazo.vencido;
+  return el("div", { clase: "aviso" }, [
+    el("p", { texto: fmt(texto, { fecha: p.vencimiento.fecha }) }),
   ]);
+}
 
-  const pestanas = el("div", {}, []);
+/// Lo que la fase pide, con la acción principal debajo y el resto en voz baja.
+function panelAhora(p) {
+  const principal = p.acciones[0];
+  const resto = p.acciones.slice(1).filter((a) => T.accion[a]);
+
+  const secundarias = el("div", { clase: "tambien" });
+  for (const clave of resto) {
+    secundarias.appendChild(
+      boton(T.accion[clave], () => ejecutar(clave, p), {
+        clase: "tenue",
+        atajo: T.atajo[clave],
+      })
+    );
+  }
+
+  return el("section", { clase: "tarjeta ahora" }, [
+    el("h2", { clase: "rotulo", texto: T.seccion.ahora }),
+    el("p", { clase: "frase", texto: T.ahora[p.etapa] || "" }),
+    principal && T.accion[principal]
+      ? boton(T.accion[principal], () => ejecutar(principal, p), {
+          clase: "principal grande",
+          atajo: T.atajo[principal],
+        })
+      : el("p", { clase: "sin-nada", texto: T.vacio.sin_acciones }),
+    resto.length > 0 ? secundarias : null,
+    el("p", {
+      clase: "nota",
+      texto: T.paso.titulo + ": " + (T.paso[p.condicion_siguiente] || p.condicion_siguiente),
+    }),
+  ]);
+}
+
+async function panelArchivos(p) {
+  const entradas =
+    (await llamar("listar_carpeta", { uid: p.resumen.uid, relativa: ui.carpeta })) || [];
+
+  const pestanas = el("div", { clase: "pestanas" });
   for (const carpeta of p.carpetas_etapa) {
     pestanas.appendChild(
-      boton(carpeta, () => {
-        ui.carpeta = carpeta;
-        pintar();
-      }, { clase: ui.carpeta === carpeta ? "principal" : "" })
+      boton(
+        nombreLlanoDeCarpeta(carpeta),
+        () => {
+          ui.carpeta = carpeta;
+          pintar();
+        },
+        { pulsado: ui.carpeta === carpeta }
+      )
     );
   }
 
   const lista = el("ul", { clase: "navegador" });
-  if (ui.carpeta) {
+  if (ui.carpeta && ui.carpeta.includes("/")) {
     lista.appendChild(
       el(
         "li",
         {
           tabindex: "0",
-          onclick: () => {
-            ui.carpeta = ui.carpeta.split("/").slice(0, -1).join("/");
-            pintar();
-          },
+          onclick: subirUnNivel,
+          onkeydown: (e) => e.key === "Enter" && subirUnNivel(),
         },
-        [el("span", { clase: "tipo", texto: "" }), el("span", { clase: "nombre", texto: ".." })]
+        [
+          el("span", { clase: "icono", texto: "↑" }),
+          el("span", { clase: "nombre", texto: T.archivos.subir }),
+        ]
       )
     );
   }
   for (const e of entradas) {
-    const nodo = el(
-      "li",
-      e.es_carpeta
-        ? {
-            tabindex: "0",
-            onclick: () => {
-              ui.carpeta = e.ruta;
-              pintar();
-            },
-          }
-        : {},
-      [
-        el("span", { clase: "tipo", texto: e.es_carpeta ? "carpeta" : "" }),
-        el("span", { clase: "nombre", texto: e.nombre }),
-        el("span", { clase: "tamano", texto: e.es_carpeta ? "" : bytesLegibles(e.tamano) }),
-      ]
+    lista.appendChild(
+      el(
+        "li",
+        e.es_carpeta
+          ? {
+              tabindex: "0",
+              onclick: () => {
+                ui.carpeta = e.ruta;
+                pintar();
+              },
+              onkeydown: (ev) => {
+                if (ev.key !== "Enter") return;
+                ui.carpeta = e.ruta;
+                pintar();
+              },
+            }
+          : {},
+        [
+          el("span", { clase: "icono", texto: e.es_carpeta ? "▸" : "" }),
+          el("span", { clase: "nombre", texto: e.nombre }),
+          el("span", {
+            clase: "tamano",
+            texto: e.es_carpeta ? "" : bytesLegibles(e.tamano),
+          }),
+        ]
+      )
     );
-    lista.appendChild(nodo);
   }
 
-  const panel = el("section", { clase: "panel" }, [
-    fila,
-    pestanas,
-    el("p", { clase: "ruta-actual", texto: p.ruta_absoluta + (ui.carpeta ? "/" + ui.carpeta : "") }),
-    entradas.length === 0
-      ? el("p", { clase: "vacio", texto: T.contexto.vacia })
-      : lista,
-    el("p", {
-      clase: "nota",
-      texto: plural(entradas.length, T.contexto.archivos_uno, T.contexto.archivos_varios),
-    }),
-    // El apartado 44.2 exige esta acción en todo momento.
-    boton(
-      T.accion.abrir_en_explorador,
-      () => llamar("abrir_en_explorador", { uid: p.resumen.uid, relativa: ui.carpeta }),
-      { atajo: T.atajo.abrir_en_explorador }
-    ),
-    el("p", { clase: "nota", texto: T.contexto.nota_cambio_vista }),
+  return el("section", { clase: "tarjeta" }, [
+    el("h2", { clase: "rotulo", texto: T.seccion.archivos }),
+    p.carpetas_etapa.length > 1 ? pestanas : null,
+    entradas.length === 0 ? el("p", { clase: "sin-nada", texto: T.archivos.vacia }) : lista,
+    entradas.length > 0
+      ? el("p", {
+          clase: "nota",
+          texto: plural(entradas.length, T.archivos.uno, T.archivos.varios),
+        })
+      : null,
   ]);
-  panel.appendChild(selector);
-  return panel;
 }
 
-function panelIdentidad(p) {
+function subirUnNivel() {
+  ui.carpeta = ui.carpeta.split("/").slice(0, -1).join("/");
+  pintar();
+}
+
+/// Las carpetas de la norma se llaman `05_STEMS` en el disco, y así deben
+/// seguir llamándose. Lo que se enseña es su lectura en llano; la que no esté
+/// en la tabla se muestra sin el número, que es lo único que sobra al leerla.
+function nombreLlanoDeCarpeta(ruta) {
+  return ruta
+    .split("/")
+    .map((t) => T.carpeta[t] || t.replace(/^\d+_/, "").replace(/_/g, " "))
+    .join(" › ");
+}
+
+/// Lo que falta, en llano. Los apartados de la norma quedan en el detalle.
+function panelFalta(p) {
+  const c = p.conformidad;
+  if (c.hallazgos.length === 0) return null;
+
+  const lista = el("ul", { clase: "lista-falta" });
+  for (const h of c.hallazgos) {
+    const clase =
+      h.severidad === "pendiente"
+        ? "pendiente"
+        : h.severidad === "excepcion"
+          ? "salvedad"
+          : "problema";
+    const etiqueta =
+      h.severidad === "pendiente"
+        ? T.falta.etiqueta_pendiente
+        : h.severidad === "excepcion"
+          ? T.falta.etiqueta_salvedad
+          : T.falta.etiqueta_problema;
+    lista.appendChild(
+      el("li", {}, [marca(etiqueta, clase), el("span", { clase: "texto", texto: h.detalle })])
+    );
+  }
+
+  return el("section", { clase: "tarjeta" }, [
+    el("h2", { clase: "rotulo", texto: T.seccion.pendiente }),
+    lista,
+    c.pendientes > 0 ? el("p", { clase: "nota", texto: T.falta.nota_pendiente }) : null,
+  ]);
+}
+
+/// El resto de la estructura sigue alcanzable, fuera del recorrido principal,
+/// como exige el apartado 44.2.
+function panelOtrasCarpetas(p) {
+  const otras = p.carpetas_existentes.filter((c) => !p.carpetas_etapa.includes(c));
+  const cont = el("div", { clase: "pila" });
+  for (const carpeta of otras) {
+    cont.appendChild(
+      boton(nombreLlanoDeCarpeta(carpeta), () => {
+        ui.carpeta = carpeta;
+        pintar();
+      })
+    );
+  }
+  return el("section", { clase: "tarjeta" }, [
+    el("h2", { clase: "rotulo", texto: T.seccion.otras_carpetas }),
+    otras.length === 0 ? el("p", { clase: "sin-nada", texto: T.vacio.sin_carpetas }) : cont,
+    el("p", { clase: "nota", texto: T.archivos.nota_abrir }),
+  ]);
+}
+
+// --- Detalle técnico ---
+//
+// Nada de lo que la versión anterior enseñaba se ha perdido: está aquí, con el
+// vocabulario del apartado 3 de la norma, para poder citarlo y compararlo con
+// otra implementación. Lo que ha cambiado es que ya no compite por la atención
+// de quien solo quiere grabar.
+
+function detalleTecnico(p) {
+  const K = T.tecnico;
   const filas = [
-    [T.rotulo.identificador_legible, p.resumen.id, "mono"],
-    [T.rotulo.identificador_interno, p.resumen.uid, "mono"],
-    [T.rotulo.artista, p.resumen.artista],
-    [T.rotulo.tipo, p.resumen.tipo],
-    [T.rotulo.frecuencia, p.audio.frecuencia ? p.audio.frecuencia + " Hz" : "—"],
-    [T.rotulo.bits, p.audio.bits ? p.audio.bits + " bits" : "—"],
+    [K.rotulo.identificador_legible, p.resumen.id, "mono"],
+    [K.rotulo.identificador_interno, p.resumen.uid, "mono"],
+    [K.rotulo.etapa, K.etapa[p.etapa] || p.etapa],
+    [K.rotulo.custodia, K.custodia[p.resumen.custodia] || p.resumen.custodia],
+    [K.rotulo.nivel, p.resumen.nivel],
+    [
+      K.rotulo.presupuesto_ruta,
+      fmt(K.presupuesto, {
+        actual: p.presupuesto_ruta.actual,
+        limite: p.presupuesto_ruta.limite,
+      }),
+    ],
+    [K.rotulo.frecuencia, p.audio.frecuencia ? p.audio.frecuencia + " Hz" : "—"],
+    [K.rotulo.bits, p.audio.bits ? p.audio.bits + " bits" : "—"],
     [T.rotulo.tempo, p.audio.tempo != null ? String(p.audio.tempo) : "—"],
     [T.rotulo.tonalidad, p.audio.tonalidad || "—"],
-    [T.rotulo.afinacion, p.audio.afinacion ? p.audio.afinacion + " Hz" : "—"],
-    [T.rotulo.origen, p.audio.origen || "—"],
+    [K.rotulo.afinacion, p.audio.afinacion ? p.audio.afinacion + " Hz" : "—"],
+    [K.rotulo.origen, p.audio.origen || "—"],
+    [K.rotulo.ruta, p.ruta_absoluta, "mono"],
   ];
+
+  for (const r of p.replicas) {
+    filas.push([K.rotulo.replica, (K.replica[r.estado] || r.estado) + "  " + r.ruta]);
+  }
+
   const tbody = el("tbody");
   for (const [clave, valor, clase] of filas) {
     tbody.appendChild(
       el("tr", {}, [el("th", { texto: clave }), el("td", { clase: clase || "", texto: valor })])
     );
   }
-  const acciones = [];
-  // El título se puede cambiar mientras el proyecto no se haya enviado ni
-  // archivado. No se presenta como definitivo cuando no lo es.
-  acciones.push(boton(T.accion.cambiar_titulo, () => dialogoCambiarTitulo(p)));
-  if (p.audio_modificable) {
-    acciones.push(boton(T.accion.declarar_tempo_tonalidad, () => dialogoAudio(p)));
-  }
-  return el("section", { clase: "panel" }, [
-    el("h2", { texto: "Identidad" }),
+
+  const cuerpo = el("div", { clase: "cuerpo" }, [
+    el("p", { clase: "nota", texto: K.nota }),
     el("table", {}, [tbody]),
-    el("div", { clase: "acciones" }, acciones),
   ]);
-}
 
-function panelConformidad(p) {
-  const c = p.conformidad;
-  const lista = el("ul", { clase: "hallazgos" });
-  for (const h of c.hallazgos) {
-    lista.appendChild(
-      el("li", {}, [
-        el("span", { clase: "distintivo " + h.severidad, texto: etiquetaSeveridad(h.severidad) }),
-        el("span", { clase: "clausula", texto: h.clausula }),
-        el("span", { texto: h.detalle }),
-      ])
-    );
-  }
-  return el("section", { clase: "panel" }, [
-    el("h2", { texto: T.rotulo.conformidad }),
-    c.hallazgos.length === 0 ? el("p", { clase: "vacio", texto: T.vacio.sin_hallazgos }) : lista,
-    c.pendientes > 0 ? el("p", { clase: "nota", texto: T.conformidad.nota_pendiente }) : null,
-  ]);
-}
-
-function etiquetaSeveridad(s) {
-  if (s === "pendiente") return "pendiente";
-  if (s === "excepcion") return "excepción";
-  return "incumplimiento";
-}
-
-function panelAcciones(p) {
-  const cont = el("div", { clase: "acciones" });
-  for (const clave of p.acciones) {
-    const etiqueta = T.accion[clave];
-    if (!etiqueta) continue;
-    cont.appendChild(boton(etiqueta, () => ejecutar(clave, p), { atajo: T.atajo[clave] }));
-  }
-  return el("section", { clase: "panel" }, [
-    el("h2", { texto: T.menu.titulo }),
-    p.acciones.length === 0 ? el("p", { clase: "vacio", texto: T.menu.sin_acciones }) : cont,
-    el("h3", { texto: T.contexto.condicion_siguiente }),
-    el("p", { clase: "nota", texto: T.condicion[p.condicion_siguiente] || p.condicion_siguiente }),
-    p.vencimiento && p.vencimiento.situacion !== "current"
-      ? el("div", { clase: "aviso-irreversible" }, [
-          el("p", {
-            texto: fmt(
-              p.vencimiento.situacion === "reclaim_available"
-                ? T.aviso.cesion_gracia_vencida
-                : T.aviso.cesion_vencida,
-              { fecha: p.vencimiento.fecha }
-            ),
-          }),
+  // Los hallazgos con su apartado, que es la forma en que la norma los nombra.
+  if (p.conformidad.hallazgos.length > 0) {
+    const tb = el("tbody");
+    for (const h of p.conformidad.hallazgos) {
+      tb.appendChild(
+        el("tr", {}, [
+          el("th", { clase: "mono", texto: h.clausula }),
+          el("td", {}, [
+            marca(K.conformidad[h.severidad] || h.severidad, "liso"),
+            el("span", { texto: " " + h.detalle }),
+          ]),
         ])
-      : null,
-  ]);
-}
+      );
+    }
+    cuerpo.appendChild(el("h2", { clase: "rotulo", texto: K.rotulo.conformidad }));
+    cuerpo.appendChild(el("table", {}, [tb]));
+  }
 
-// El resto de la estructura sigue siendo alcanzable, fuera del recorrido
-// principal, en dos acciones como máximo.
-function panelOtrasCarpetas(p) {
-  const cont = el("div", { clase: "acciones" });
-  for (const carpeta of p.carpetas_existentes) {
-    if (p.carpetas_etapa.includes(carpeta)) continue;
-    cont.appendChild(
-      boton(carpeta, () => {
-        ui.carpeta = carpeta;
-        pintar();
-      })
+  // Acciones que solo tienen sentido con el detalle a la vista.
+  const acciones = el("div", { clase: "tambien" }, [
+    boton(T.accion.verificar_integridad, () => ejecutar("verificar_integridad", p), {
+      atajo: T.atajo.verificar_integridad,
+    }),
+    boton(T.accion.cambiar_titulo, () => dialogoCambiarTitulo(p)),
+  ]);
+  if (p.audio_modificable) {
+    acciones.appendChild(
+      boton(T.accion.declarar_tempo_tonalidad, () => dialogoAudio(p))
     );
   }
-  return el("section", { clase: "panel" }, [
-    el("h2", { texto: T.menu.otras_carpetas }),
-    cont,
-    el("p", { clase: "nota", texto: T.menu.nota_otras_carpetas }),
+  cuerpo.appendChild(acciones);
+
+  return el("details", { clase: "detalle" }, [
+    el("summary", { texto: T.seccion.detalle }),
+    cuerpo,
   ]);
 }
 
@@ -713,10 +877,10 @@ async function ejecutar(clave, p) {
       return dialogoDerivar(p);
 
     case "ceder_custodia":
-      return dialogoCederCustodia(p);
+      return dialogoDejarProyecto(p);
 
     case "recuperar_custodia":
-      return dialogoRecuperarCustodia(p);
+      return dialogoRecuperar(p);
 
     case "reclamar_retorno": {
       const r = await llamar("reclamar_retorno", { uid });
@@ -734,16 +898,16 @@ async function ejecutar(clave, p) {
       const r = await llamar("verificar_integridad", { uid });
       if (!r) return;
       if (r.fallidos === 0) {
-        mostrarError(r.comprobados + " archivos verificados. Todos coinciden.");
+        avisar({ texto: fmt(T.aviso.integridad_bien, { n: r.comprobados }), tono: "bueno" });
       } else {
-        mostrarError(
-          "La verificación de integridad falló en " +
-            r.fallidos +
-            " de " +
-            r.comprobados +
-            " archivos. Ver los archivos afectados: " +
-            r.rutas.join(", ")
-        );
+        avisar({
+          texto: fmt(T.error.integridad_mal, {
+            fallidos: r.fallidos,
+            total: r.comprobados,
+            rutas: r.rutas.join(", "),
+          }),
+          tono: "malo",
+        });
       }
       return;
     }
@@ -755,25 +919,26 @@ async function ejecutar(clave, p) {
     }
 
     case "incorporar_material":
-      return dialogoIncorporar(p);
+      return dialogoAnadirMaterial(p);
 
     case "exportar_stems":
-      return dialogoExportar(p, "05_STEMS");
+      return dialogoSacar(p, "05_STEMS");
     case "exportar_bounce":
-      return dialogoExportar(p, "06_MIX");
+      return dialogoSacar(p, "06_MIX");
     case "incorporar_master":
-      return dialogoExportar(p, "07_MASTER");
+      return dialogoSacar(p, "07_MASTER");
 
     case "constituir_paquete_entrega":
     case "emitir_envio":
     case "constituir_paquete_produccion":
-      return dialogoEmitir(p);
+      return dialogoEnviar(p);
 
     case "declarar_tempo_tonalidad":
       return dialogoAudio(p);
 
     default: {
-      // Las acciones que consisten en colocar material abren su carpeta.
+      // Las acciones que consisten en dejar archivos en su sitio abren la
+      // carpeta correspondiente y no piden nada más.
       const carpeta = p.carpetas_etapa[0] || "";
       ui.carpeta = carpeta;
       await pintar();
@@ -787,7 +952,7 @@ async function dialogoCambiarTitulo(p) {
   const r = await confirmar({
     titulo: T.accion.cambiar_titulo,
     detalle: T.creacion.nota_titulo,
-    etiquetaConfirmar: T.accion.cambiar_titulo,
+    etiquetaConfirmar: T.accion.guardar,
     campos: [{ clave: "titulo", nodo: campo(T.rotulo.titulo, titulo), leer: () => titulo.value }],
   });
   if (!r) return;
@@ -802,20 +967,33 @@ async function dialogoAudio(p) {
   const tempo = el("input", { type: "number", value: p.audio.tempo ?? "", min: "1" });
   const tonalidad = el("input", { type: "text", value: p.audio.tonalidad ?? "" });
   const afinacion = el("input", { type: "number", value: p.audio.afinacion ?? 440 });
-  const origen = el("input", { type: "text", value: p.audio.origen ?? "00:00:00:00" });
   const r = await confirmar({
     titulo: T.accion.declarar_tempo_tonalidad,
-    detalle: "Estos valores quedan fijados al cerrar la etapa de grabación.",
-    etiquetaConfirmar: T.accion.aceptar,
+    detalle: T.creacion.nota_resto,
+    etiquetaConfirmar: T.accion.guardar,
     campos: [
-      { clave: "tempo", nodo: campo(T.rotulo.tempo, tempo), leer: () => (tempo.value ? Number(tempo.value) : null) },
-      { clave: "tonalidad", nodo: campo(T.rotulo.tonalidad, tonalidad), leer: () => tonalidad.value || null },
-      { clave: "afinacion", nodo: campo(T.rotulo.afinacion, afinacion), leer: () => (afinacion.value ? Number(afinacion.value) : null) },
-      { clave: "origen", nodo: campo(T.rotulo.origen, origen), leer: () => origen.value || null },
+      {
+        clave: "tempo",
+        nodo: campo(T.rotulo.tempo, tempo),
+        leer: () => (tempo.value ? Number(tempo.value) : null),
+      },
+      {
+        clave: "tonalidad",
+        nodo: campo(T.rotulo.tonalidad, tonalidad),
+        leer: () => tonalidad.value || null,
+      },
+      {
+        clave: "afinacion",
+        nodo: campo(T.rotulo.afinacion, afinacion),
+        leer: () => (afinacion.value ? Number(afinacion.value) : null),
+      },
     ],
   });
   if (!r) return;
-  const v = await llamar("registrar_audio", { uid: p.resumen.uid, datos: r });
+  const v = await llamar("registrar_audio", {
+    uid: p.resumen.uid,
+    datos: { ...r, origen: p.audio.origen },
+  });
   if (v) {
     ui.proyecto = v;
     await pintar();
@@ -824,23 +1002,16 @@ async function dialogoAudio(p) {
 
 async function dialogoCrearSesion(p) {
   const daw = el("input", { type: "text", value: "Reaper", autofocus: true });
-  const etapa = seleccion(
-    [
-      ["COMP", "COMP — composición"],
-      ["TRACK", "TRACK — grabación"],
-      ["EDIT", "EDIT — edición"],
-      ["MIX", "MIX — mezcla"],
-      ["MST", "MST — mastering"],
-      ["SD", "SD — diseño sonoro"],
-    ],
+  const para = seleccion(
+    opcionesDe(T.sesion, ["COMP", "TRACK", "EDIT", "MIX", "MST", "SD"]),
     "TRACK"
   );
   const r = await confirmar({
     titulo: T.accion.crear_sesion,
     etiquetaConfirmar: T.accion.crear_sesion,
     campos: [
-      { clave: "daw", nodo: campo("Estación de trabajo", daw), leer: () => daw.value },
-      { clave: "etapa", nodo: campo("Sufijo de etapa", etapa), leer: () => etapa.value },
+      { clave: "daw", nodo: campo(T.sesion.campo_programa, daw), leer: () => daw.value },
+      { clave: "etapa", nodo: campo(T.sesion.campo_para, para), leer: () => para.value },
     ],
   });
   if (!r) return;
@@ -851,7 +1022,7 @@ async function dialogoCrearSesion(p) {
     uid: p.resumen.uid,
     relativa: "02_SESSIONS/" + r.daw,
   });
-  mostrarError("Nombre sugerido para la sesión: " + c.nombre_sugerido);
+  avisar({ texto: fmt(T.sesion.nombre_sugerido, { nombre: c.nombre_sugerido }), tono: "bueno" });
   await ir("proyecto", p.resumen.uid);
 }
 
@@ -864,13 +1035,18 @@ async function dialogoDerivar(p) {
     detalle: T.irreversible.derivar_detalle,
     etiquetaConfirmar: T.accion.nueva_version,
     campos: [
-      { clave: "motivo", nodo: campo(T.irreversible.derivar_campo_motivo, motivo), leer: () => motivo.value },
+      {
+        clave: "motivo",
+        nodo: campo(T.irreversible.derivar_campo_motivo, motivo),
+        leer: () => motivo.value,
+      },
       {
         clave: "paralelo",
-        nodo: el("div", { clase: "campo" }, [
-          el("label", {}, [paralelo, " " + T.irreversible.derivar_paralelo]),
-          el("p", { clase: "nota", texto: T.irreversible.derivar_paralelo_nota }),
-        ]),
+        nodo: campoMarca(
+          T.irreversible.derivar_paralelo,
+          paralelo,
+          T.irreversible.derivar_paralelo_nota
+        ),
         leer: () => paralelo.checked,
       },
     ],
@@ -884,29 +1060,23 @@ async function dialogoDerivar(p) {
   if (d) await ir("proyecto", d.uid_derivado);
 }
 
-async function dialogoIncorporar(p) {
-  const paquetes = (await llamar("paquetes_en_cuarentena")) || [];
-  const origen = el("input", { type: "text", placeholder: "", autofocus: true });
+async function dialogoAnadirMaterial(p) {
+  const origen = el("input", { type: "text", autofocus: true });
   const procedencia = el("input", { type: "text" });
   const autorizacion = seleccion(
     [
-      ["cleared", "resuelta"],
-      ["pending", "pendiente"],
-      ["not_required", "no procede"],
+      ["cleared", "Sí, hay permiso"],
+      ["pending", "Todavía no"],
+      ["not_required", "No hace falta"],
     ],
     "cleared"
   );
-  const clasificacion = seleccion(
-    [
-      ["PUBLICO", T.clasificacion.PUBLICO],
-      ["INTERNO", T.clasificacion.INTERNO],
-      ["CONFIDENCIAL", T.clasificacion.CONFIDENCIAL],
-      ["RESTRINGIDO", T.clasificacion.RESTRINGIDO],
-    ],
+  const quienLoVe = seleccion(
+    opcionesDe(T.quien_lo_ve, ["PUBLICO", "INTERNO", "CONFIDENCIAL", "RESTRINGIDO"]),
     "INTERNO"
   );
 
-  const elegir = boton("Elegir archivo de la cuarentena", async () => {
+  const elegir = boton(T.accion.elegir_archivo, async () => {
     const ruta = await dialogo.open({ multiple: false });
     if (ruta) origen.value = ruta;
   });
@@ -914,24 +1084,33 @@ async function dialogoIncorporar(p) {
   const r = await confirmar({
     titulo: T.accion.incorporar_material,
     detalle:
-      "Todo material procedente del exterior se deposita primero en 40_INBOX. La copia se sitúa en 01_REF, que se mantiene en solo lectura.",
+      "Todo lo que viene de fuera pasa primero por la bandeja de entrada. La copia se guarda aparte y en solo lectura.",
     etiquetaConfirmar: T.accion.incorporar_material,
     campos: [
       {
         clave: "origen",
         nodo: el("div", { clase: "campo" }, [
-          el("label", { texto: "Archivo en la cuarentena" }),
+          el("label", { texto: "Archivo" }),
           origen,
-          elegir,
-          paquetes.length > 0
-            ? el("p", { clase: "nota", texto: paquetes.length + " paquetes en la cuarentena" })
-            : null,
+          el("div", { clase: "tambien" }, [elegir]),
         ]),
         leer: () => origen.value,
       },
-      { clave: "procedencia", nodo: campo("Origen", procedencia), leer: () => procedencia.value },
-      { clave: "autorizacion", nodo: campo("Estado de autorización", autorizacion), leer: () => autorizacion.value },
-      { clave: "clasificacion", nodo: campo("Clasificación", clasificacion), leer: () => clasificacion.value },
+      {
+        clave: "procedencia",
+        nodo: campo("De dónde viene", procedencia),
+        leer: () => procedencia.value,
+      },
+      {
+        clave: "autorizacion",
+        nodo: campo("Permiso para usarlo", autorizacion),
+        leer: () => autorizacion.value,
+      },
+      {
+        clave: "clasificacion",
+        nodo: campo(T.envio.campo_quien_lo_ve, quienLoVe),
+        leer: () => quienLoVe.value,
+      },
     ],
   });
   if (!r) return;
@@ -950,18 +1129,24 @@ async function dialogoIncorporar(p) {
   }
 }
 
-// Cada acción decide dónde va el archivo. La persona no elige ubicación.
-async function dialogoExportar(p, carpeta) {
+/// Cada acción decide dónde va el archivo. La persona no elige ubicación.
+async function dialogoSacar(p, carpeta) {
+  const etiqueta =
+    carpeta === "05_STEMS"
+      ? T.accion.exportar_stems
+      : carpeta === "06_MIX"
+        ? T.accion.exportar_bounce
+        : T.accion.incorporar_master;
   const nombre = el("input", {
     type: "text",
     value: (p.resumen.titulo || "Tema").replace(/[^A-Za-z0-9-]/g, "-"),
     autofocus: true,
   });
   const r = await confirmar({
-    titulo: carpeta === "05_STEMS" ? T.accion.exportar_stems : carpeta === "06_MIX" ? T.accion.exportar_bounce : T.accion.incorporar_master,
-    detalle: "El número de versión se incrementa. Lo ya exportado no se sobrescribe.",
+    titulo: etiqueta,
+    detalle: "El número de versión sube solo. Lo que ya se sacó no se sobrescribe.",
     etiquetaConfirmar: T.accion.aceptar,
-    campos: [{ clave: "nombre", nodo: campo("Nombre base", nombre), leer: () => nombre.value }],
+    campos: [{ clave: "nombre", nodo: campo("Nombre", nombre), leer: () => nombre.value }],
   });
   if (!r) return;
   const ruta = await llamar("ruta_exportacion", {
@@ -974,43 +1159,133 @@ async function dialogoExportar(p, carpeta) {
   ui.carpeta = carpeta;
   await pintar();
   await llamar("abrir_en_explorador", { uid: p.resumen.uid, relativa: carpeta });
-  mostrarError("Exportar a: " + ruta);
+  avisar({ texto: "Guardar el archivo aquí: " + ruta, tono: "bueno" });
 }
 
-async function dialogoCederCustodia(p) {
-  const destinatario = el("input", { type: "text", autofocus: true });
-  const contacto = el("input", { type: "text" });
-  const finalidad = el("input", { type: "text" });
-  const retorno = el("input", { type: "date" });
-  const gracia = el("input", { type: "number", value: "15", min: "1" });
+// --- Enviar y dejar el proyecto ---
+//
+// El diálogo de envío pedía antes siete campos, dos de ellos con vocabulario
+// de la norma. Pide cinco, y lo que se manda se elige por lo que es, no por la
+// letra del perfil.
+
+async function dialogoEnviar(p) {
+  const quien = el("input", { type: "text", autofocus: true });
+  const contacto = el("input", { type: "email" });
+  const paraQue = el("input", { type: "text" });
+  const hasta = el("input", { type: "date" });
+  const queMandar = seleccion(
+    [
+      ["E", T.envio.manda_E],
+      ["P", T.envio.manda_P],
+      ["A", T.envio.manda_A],
+    ],
+    "E"
+  );
+  const quienLoVe = seleccion(
+    opcionesDe(T.quien_lo_ve, ["PUBLICO", "INTERNO", "CONFIDENCIAL", "RESTRINGIDO"]),
+    "INTERNO"
+  );
+  const revisado = el("input", { type: "checkbox" });
 
   const r = await confirmar({
-    titulo: T.accion.ceder_custodia,
+    titulo: T.envio.titulo,
+    etiquetaConfirmar: T.accion.emitir_envio,
+    campos: [
+      { clave: "quien", nodo: campo(T.envio.campo_quien, quien), leer: () => quien.value },
+      {
+        clave: "contacto",
+        nodo: campo(T.envio.campo_contacto, contacto),
+        leer: () => contacto.value,
+      },
+      {
+        clave: "que",
+        nodo: campo(T.envio.campo_que_mandar, queMandar),
+        leer: () => queMandar.value,
+      },
+      { clave: "paraQue", nodo: campo(T.envio.campo_para_que, paraQue), leer: () => paraQue.value },
+      {
+        clave: "quienLoVe",
+        nodo: campo(T.envio.campo_quien_lo_ve, quienLoVe),
+        leer: () => quienLoVe.value,
+      },
+      { clave: "hasta", nodo: campo(T.envio.campo_hasta, hasta), leer: () => hasta.value },
+      {
+        clave: "revisado",
+        nodo: campoMarca(T.envio.campo_revisado, revisado, T.envio.nota_revisado),
+        leer: () => revisado.checked,
+      },
+    ],
+  });
+  if (!r) return;
+
+  const e = await llamar("emitir_envio", {
+    uid: p.resumen.uid,
+    datos: {
+      perfil: r.que,
+      clasificacion: r.quienLoVe,
+      destinatario: r.quien,
+      contacto: r.contacto,
+      finalidad: r.paraQue,
+      retencion: r.hasta,
+      acuse: r.contacto,
+      ceder_custodia: false,
+      retorno_esperado: null,
+      gracia: 0,
+      serializar: true,
+      control_aprobado: r.revisado,
+    },
+  });
+  if (!e) return;
+  avisar({
+    texto: fmt(T.envio.resultado, {
+      archivos: e.archivos,
+      tamano: bytesLegibles(e.bytes),
+      ruta: e.artefacto,
+    }),
+    tono: "bueno",
+  });
+  await ir("proyecto", p.resumen.uid);
+}
+
+async function dialogoDejarProyecto(p) {
+  const quien = el("input", { type: "text", autofocus: true });
+  const contacto = el("input", { type: "email" });
+  const paraQue = el("input", { type: "text" });
+  const vuelve = el("input", { type: "date" });
+  const margen = el("input", { type: "number", value: "15", min: "1" });
+
+  const r = await confirmar({
+    titulo: T.irreversible.ceder_titulo,
     aviso: T.irreversible.ceder_aviso,
     detalle: T.irreversible.ceder_detalle,
     etiquetaConfirmar: T.accion.ceder_custodia,
     campos: [
-      { clave: "destinatario", nodo: campo(T.rotulo.destinatario, destinatario), leer: () => destinatario.value },
-      { clave: "contacto", nodo: campo("Contacto", contacto), leer: () => contacto.value },
-      { clave: "finalidad", nodo: campo("Finalidad del envío", finalidad), leer: () => finalidad.value },
-      { clave: "retorno", nodo: campo(T.rotulo.retorno_esperado, retorno), leer: () => retorno.value },
-      { clave: "gracia", nodo: campo(T.rotulo.plazo_gracia, gracia), leer: () => Number(gracia.value) },
+      { clave: "quien", nodo: campo(T.envio.campo_quien, quien), leer: () => quien.value },
+      {
+        clave: "contacto",
+        nodo: campo(T.envio.campo_contacto, contacto),
+        leer: () => contacto.value,
+      },
+      { clave: "paraQue", nodo: campo(T.envio.campo_para_que, paraQue), leer: () => paraQue.value },
+      { clave: "vuelve", nodo: campo(T.envio.campo_vuelve, vuelve), leer: () => vuelve.value },
+      { clave: "margen", nodo: campo(T.envio.campo_margen, margen), leer: () => Number(margen.value) },
     ],
   });
   if (!r) return;
+
   const e = await llamar("emitir_envio", {
     uid: p.resumen.uid,
     datos: {
       perfil: "P",
       clasificacion: "CONFIDENCIAL",
-      destinatario: r.destinatario,
+      destinatario: r.quien,
       contacto: r.contacto,
-      finalidad: r.finalidad,
-      retencion: r.retorno,
+      finalidad: r.paraQue,
+      retencion: r.vuelve,
       acuse: r.contacto,
       ceder_custodia: true,
-      retorno_esperado: r.retorno,
-      gracia: r.gracia,
+      retorno_esperado: r.vuelve,
+      gracia: r.margen,
       serializar: true,
       control_aprobado: true,
     },
@@ -1018,78 +1293,7 @@ async function dialogoCederCustodia(p) {
   if (e) await ir("proyecto", p.resumen.uid);
 }
 
-async function dialogoEmitir(p) {
-  const destinatario = el("input", { type: "text", autofocus: true });
-  const contacto = el("input", { type: "text" });
-  const finalidad = el("input", { type: "text" });
-  const retencion = el("input", { type: "date" });
-  const perfil = seleccion(
-    [
-      ["E", "E — " + T.perfil.E],
-      ["P", "P — " + T.perfil.P],
-      ["A", "A — " + T.perfil.A],
-    ],
-    "E"
-  );
-  const clasificacion = seleccion(
-    [
-      ["PUBLICO", T.clasificacion.PUBLICO],
-      ["INTERNO", T.clasificacion.INTERNO],
-      ["CONFIDENCIAL", T.clasificacion.CONFIDENCIAL],
-      ["RESTRINGIDO", T.clasificacion.RESTRINGIDO],
-    ],
-    "INTERNO"
-  );
-  const control = el("input", { type: "checkbox" });
-
-  const r = await confirmar({
-    titulo: T.accion.emitir_envio,
-    detalle:
-      "Ningún paquete debe entregarse ni incluirse en un envío sin informe de control de calidad aprobado.",
-    etiquetaConfirmar: T.accion.emitir_envio,
-    campos: [
-      { clave: "perfil", nodo: campo("Perfil", perfil), leer: () => perfil.value },
-      { clave: "clasificacion", nodo: campo("Clasificación", clasificacion), leer: () => clasificacion.value },
-      { clave: "destinatario", nodo: campo(T.rotulo.destinatario, destinatario), leer: () => destinatario.value },
-      { clave: "contacto", nodo: campo("Contacto", contacto), leer: () => contacto.value },
-      { clave: "finalidad", nodo: campo("Finalidad del envío", finalidad), leer: () => finalidad.value },
-      { clave: "retencion", nodo: campo("Retención en destino", retencion), leer: () => retencion.value },
-      {
-        clave: "control",
-        nodo: el("div", { clase: "campo" }, [
-          el("label", {}, [control, " El informe de control de calidad está aprobado"]),
-        ]),
-        leer: () => control.checked,
-      },
-    ],
-  });
-  if (!r) return;
-  const e = await llamar("emitir_envio", {
-    uid: p.resumen.uid,
-    datos: {
-      perfil: r.perfil,
-      clasificacion: r.clasificacion,
-      destinatario: r.destinatario,
-      contacto: r.contacto,
-      finalidad: r.finalidad,
-      retencion: r.retencion,
-      acuse: r.contacto,
-      ceder_custodia: false,
-      retorno_esperado: null,
-      gracia: 0,
-      serializar: true,
-      control_aprobado: r.control,
-    },
-  });
-  if (e) {
-    mostrarError(
-      "Envío " + e.envio + ". " + e.archivos + " archivos, " + bytesLegibles(e.bytes) + ". Paquete en " + e.artefacto
-    );
-    await ir("proyecto", p.resumen.uid);
-  }
-}
-
-async function dialogoRecuperarCustodia(p) {
+async function dialogoRecuperar(p) {
   const r = await confirmar({
     titulo: T.irreversible.recuperar_titulo,
     aviso: T.irreversible.recuperar_aviso,
@@ -1104,15 +1308,21 @@ async function dialogoRecuperarCustodia(p) {
   }
 }
 
-// --- Recepción ---
+// --- Lo que ha llegado ---
 
-async function pintarRecepcion() {
+async function pintarRecibido() {
   const paquetes = (await llamar("paquetes_en_cuarentena")) || [];
   const cont = el("div");
-  cont.appendChild(el("div", { clase: "etapa-titulo" }, [el("h1", { texto: T.recepcion.titulo })]));
+  cont.appendChild(
+    el("div", { clase: "portada" }, [el("h1", { texto: T.recibido.titulo })])
+  );
 
   if (paquetes.length === 0) {
-    cont.appendChild(el("p", { clase: "vacio", texto: T.recepcion.sin_paquetes }));
+    cont.appendChild(
+      el("div", { clase: "vacio" }, [
+        el("p", { clase: "principal-texto", texto: T.recibido.vacio }),
+      ])
+    );
     return cont;
   }
 
@@ -1120,33 +1330,30 @@ async function pintarRecepcion() {
   for (const ruta of paquetes) {
     lista.appendChild(
       el("li", {}, [
-        el("span", { clase: "nombre mono", texto: ruta }),
-        boton(T.accion.verificar_paquete, () => dialogoVerificar(ruta)),
+        el("span", { clase: "nombre", texto: ruta.split(/[\\/]/).pop() }),
+        boton(T.accion.verificar_paquete, () => dialogoRevisar(ruta), { clase: "principal" }),
       ])
     );
   }
-  cont.appendChild(
-    el("section", { clase: "panel" }, [el("h2", { texto: T.recepcion.cuarentena }), lista])
-  );
+  cont.appendChild(el("section", { clase: "tarjeta" }, [lista]));
   return cont;
 }
 
-async function dialogoVerificar(ruta) {
+async function dialogoRevisar(ruta) {
   const emisor = el("input", { type: "text", autofocus: true });
   const condiciones = el("input", { type: "checkbox", checked: true });
   const r = await confirmar({
     titulo: T.accion.verificar_paquete,
     etiquetaConfirmar: T.accion.verificar_paquete,
     campos: [
-      { clave: "emisor", nodo: campo("Organización emisora", emisor), leer: () => emisor.value },
+      {
+        clave: "emisor",
+        nodo: campo(T.recibido.campo_de_quien, emisor),
+        leer: () => emisor.value,
+      },
       {
         clave: "condiciones",
-        nodo: el("div", { clase: "campo" }, [
-          el("label", {}, [
-            condiciones,
-            " Las condiciones de uso declaradas son compatibles con la finalidad prevista",
-          ]),
-        ]),
+        nodo: campoMarca(T.recibido.campo_condiciones, condiciones),
         leer: () => condiciones.checked,
       },
     ],
@@ -1155,108 +1362,102 @@ async function dialogoVerificar(ruta) {
   const v = await llamar("verificar_paquete", {
     datos: { paquete: ruta, emisor: r.emisor, condiciones_aceptables: r.condiciones },
   });
-  if (!v) return;
-  mostrarVerificacion(v, ruta, r.emisor, r.condiciones);
+  if (v) mostrarRevision(v, ruta, r.emisor, r.condiciones);
 }
 
-function mostrarVerificacion(v, ruta, emisor, condiciones) {
-  const tbody = el("tbody");
-  for (const [clave, resultado] of v.verificaciones) {
-    tbody.appendChild(
-      el("tr", {}, [
-        el("td", { texto: T.verificacion[clave] || clave }),
-        el("td", {}, [
-          el("span", {
-            clase: "distintivo " + (resultado === "fail" ? "incumplimiento" : resultado === "pass" ? "conforme" : "neutro"),
-            texto: T.recepcion[resultado] || resultado,
-          }),
-        ]),
+function mostrarRevision(v, ruta, emisor, condiciones) {
+  const tono =
+    v.resultado === "rejected" ? "malo" : v.resultado === "accepted" ? "bueno" : "";
+
+  // Solo se enumeran las comprobaciones que no salieron bien. Catorce filas
+  // verdes no informan de nada; las que fallan, sí.
+  const problemas = v.verificaciones.filter(([, res]) => res !== "pass");
+  const lista = el("ul", { clase: "lista-falta" });
+  for (const [clave, res] of problemas) {
+    lista.appendChild(
+      el("li", {}, [
+        marca(T.recibido[res] || res, res === "fail" ? "problema" : "pendiente"),
+        el("span", { clase: "texto", texto: T.comprobacion[clave] || clave }),
       ])
     );
   }
-  const disc = el("ul", { clase: "hallazgos" });
-  for (const [comprobacion, detalle] of v.discrepancias) {
-    disc.appendChild(
+  for (const [clave, detalle] of v.discrepancias) {
+    lista.appendChild(
       el("li", {}, [
-        el("span", { clase: "distintivo incumplimiento", texto: T.verificacion[comprobacion] || comprobacion }),
-        el("span", { texto: "" }),
-        el("span", { texto: detalle }),
+        marca(T.recibido.reparos, "problema"),
+        el("span", { clase: "texto", texto: (T.comprobacion[clave] || clave) + ": " + detalle }),
       ])
     );
   }
 
   const d = $("#diálogo");
-  const pie = el("div", { clase: "pie" }, [
-    boton(T.accion.cerrar, () => d.close()),
-    v.admite_ingesta
-      ? boton(
-          T.accion.ingerir_paquete,
-          async () => {
-            d.close();
-            const res = await llamar("ingerir_paquete", {
-              datos: {
-                paquete: ruta,
-                emisor,
-                condiciones_aceptables: condiciones,
-                proyecto_destino: null,
-                aceptar_custodia: v.cede_custodia,
-              },
-            });
-            if (res) {
-              mostrarError(
-                res.archivos + " archivos incorporados en " + res.destino + ". Acuse en " + res.ruta_acuse
-              );
-              await pintar();
-            }
-          },
-          { clase: "principal" }
-        )
-      : null,
-  ]);
-
   d.replaceChildren(
-    el("h2", { texto: T.recepcion.verificacion }),
-    el("p", {}, [
-      el("span", { texto: T.rotulo.envio + " " + v.envio + ". " }),
-      el("span", {
-        clase: "distintivo " + (v.resultado === "rejected" ? "incumplimiento" : v.resultado === "accepted" ? "conforme" : "pendiente"),
-        texto: T.recepcion["resultado_" + v.resultado] || v.resultado,
-      }),
+    el("h2", { texto: T.recibido.revision }),
+    el("div", { clase: "aviso " + tono }, [
+      el("p", { texto: T.recibido[v.resultado] || v.resultado }),
     ]),
-    el("table", {}, [tbody]),
-    v.discrepancias.length > 0 ? el("h3", { texto: T.recepcion.discrepancias }) : null,
-    v.discrepancias.length > 0 ? disc : null,
-    pie
+    problemas.length + v.discrepancias.length === 0
+      ? el("p", { clase: "nota", texto: T.falta.nada })
+      : lista,
+    el("div", { clase: "pie" }, [
+      boton(T.accion.cerrar, () => d.close()),
+      v.admite_ingesta
+        ? boton(
+            T.accion.ingerir_paquete,
+            async () => {
+              d.close();
+              const res = await llamar("ingerir_paquete", {
+                datos: {
+                  paquete: ruta,
+                  emisor,
+                  condiciones_aceptables: condiciones,
+                  proyecto_destino: null,
+                  aceptar_custodia: v.cede_custodia,
+                },
+              });
+              if (res) {
+                avisar({
+                  texto: fmt(T.recibido.guardado, {
+                    archivos: res.archivos,
+                    destino: res.destino,
+                  }),
+                  tono: "bueno",
+                });
+                await pintar();
+              }
+            },
+            { clase: "principal" }
+          )
+        : null,
+    ])
   );
   d.showModal();
 }
 
-// --- Registro ---
+// --- Historial ---
 
-async function pintarRegistro() {
+async function pintarHistorial() {
   const entradas = (await llamar("registro", { ultimas: 200 })) || [];
   const estado = await llamar("verificar_registro");
   const cont = el("div");
-  cont.appendChild(el("div", { clase: "etapa-titulo" }, [el("h1", { texto: "Registro de eventos" })]));
+  cont.appendChild(el("div", { clase: "portada" }, [el("h1", { texto: T.historial.titulo })]));
 
   if (estado) {
+    const roto = !estado.intacto;
     cont.appendChild(
-      el("section", { clase: "panel" }, [
-        el("p", {}, [
-          el("span", { clase: "cifra", texto: String(estado.total) }),
-          el("span", { texto: " entradas. " }),
-          el("span", {
-            clase: "distintivo " + (estado.intacto ? "conforme" : "incumplimiento"),
-            texto: estado.intacto ? "encadenamiento intacto" : "encadenamiento roto",
-          }),
-        ]),
-        !estado.intacto
+      el("div", { clase: "aviso " + (roto ? "malo" : "bueno") }, [
+        el("p", {
+          texto:
+            (roto ? T.historial.roto : T.historial.intacto) +
+            ". " +
+            fmt(T.historial.entradas, { n: estado.total }) +
+            ".",
+        }),
+        roto
           ? el("p", {
-              clase: "nota",
-              texto:
-                "Las entradas " +
-                estado.sin_encadenar.concat(estado.alteradas).join(", ") +
-                " no corresponden a la cadena. Indica supresión, reordenación o alteración.",
+              texto: fmt(T.historial.nota_roto, {
+                cuales: estado.sin_encadenar.concat(estado.alteradas).join(", "),
+              }),
             })
           : null,
       ])
@@ -1264,7 +1465,7 @@ async function pintarRegistro() {
   }
 
   if (entradas.length === 0) {
-    cont.appendChild(el("p", { clase: "vacio", texto: T.vacio.sin_eventos }));
+    cont.appendChild(el("p", { clase: "sin-nada", texto: T.historial.vacio }));
     return cont;
   }
 
@@ -1273,19 +1474,33 @@ async function pintarRegistro() {
     tbody.appendChild(
       el("tr", {}, [
         el("td", { clase: "mono", texto: e.marca }),
-        el("td", { clase: "mono", texto: e.evento }),
+        el("td", { texto: e.evento }),
         el("td", { texto: e.actor }),
         el("td", { clase: "mono", texto: e.proyecto || "" }),
       ])
     );
   }
-  cont.appendChild(el("section", { clase: "panel" }, [el("table", {}, [tbody])]));
+  cont.appendChild(
+    el("section", { clase: "tarjeta" }, [
+      el("table", {}, [
+        el("thead", {}, [
+          el("tr", {}, [
+            el("th", { texto: T.historial.columna_cuando }),
+            el("th", { texto: T.historial.columna_que }),
+            el("th", { texto: T.historial.columna_quien }),
+            el("th", { texto: T.historial.columna_proyecto }),
+          ]),
+        ]),
+        tbody,
+      ]),
+    ])
+  );
   return cont;
 }
 
-// --- Preferencias ---
+// --- Ajustes ---
 
-async function pintarPreferencias() {
+async function pintarAjustes() {
   const identidad = (await llamar("identidad")) || { organizacion: "", persona: "" };
   const declaracion = (await llamar("declaracion_conformidad")) || "";
 
@@ -1293,47 +1508,78 @@ async function pintarPreferencias() {
   const persona = el("input", { type: "text", value: identidad.persona });
   const tema = seleccion(
     [
-      ["sistema", T.preferencias.tema_sistema],
-      ["claro", T.preferencias.tema_claro],
-      ["oscuro", T.preferencias.tema_oscuro],
+      ["sistema", T.ajustes.tema_sistema],
+      ["claro", T.ajustes.tema_claro],
+      ["oscuro", T.ajustes.tema_oscuro],
     ],
     localStorage.getItem("tema") || "sistema"
   );
   tema.addEventListener("change", () => aplicarTema(tema.value));
 
+  const horaTexto = () => {
+    const r = ui.reloj;
+    if (!r || r.estado === "unavailable") return T.ajustes.hora_sin;
+    return r.estado === "synced"
+      ? fmt(T.ajustes.hora_bien, { ms: r.desviacion_ms })
+      : fmt(T.ajustes.hora_mal, { s: Math.round(r.desviacion_ms / 1000) });
+  };
+  const hora = el("p", { clase: "nota", texto: horaTexto() });
+
   return el("div", {}, [
-    el("div", { clase: "etapa-titulo" }, [el("h1", { texto: T.preferencias.titulo })]),
-    el("section", { clase: "panel" }, [
-      el("h2", { texto: T.preferencias.identidad }),
-      campo(T.preferencias.organizacion, org),
-      campo(T.preferencias.persona, persona),
-      boton(
-        T.accion.aceptar,
-        async () => {
-          await llamar("set_identidad", {
-            identidad: { organizacion: org.value, persona: persona.value },
-          });
-        },
-        { clase: "principal" }
-      ),
+    el("div", { clase: "portada" }, [el("h1", { texto: T.ajustes.titulo })]),
+
+    el("section", { clase: "tarjeta" }, [
+      el("h2", { texto: T.ajustes.quien_eres }),
+      campo(T.ajustes.organizacion, org),
+      campo(T.ajustes.persona, persona, T.ajustes.nota_quien),
+      el("div", { clase: "tambien" }, [
+        boton(
+          T.accion.guardar,
+          async () => {
+            await llamar("set_identidad", {
+              identidad: { organizacion: org.value, persona: persona.value },
+            });
+          },
+          { clase: "principal" }
+        ),
+      ]),
     ]),
-    el("section", { clase: "panel" }, [
-      el("h2", { texto: T.preferencias.tema }),
-      campo(T.preferencias.tema, tema),
+
+    el("section", { clase: "tarjeta" }, [
+      el("h2", { texto: T.ajustes.aspecto }),
+      campo(T.ajustes.tema, tema),
     ]),
-    el("section", { clase: "panel" }, [
-      el("h2", { texto: T.rotulo.reloj }),
-      boton(T.accion.sincronizar_reloj, async () => {
-        ui.reloj = await llamar("comprobar_reloj");
-        pintarEstado();
-        if (ui.reloj && ui.reloj.precision === "http_date") {
-          mostrarError(T.aviso.reloj_precision_reducida);
-        }
-      }),
+
+    el("section", { clase: "tarjeta" }, [
+      el("h2", { texto: T.ajustes.hora }),
+      hora,
+      el("div", { clase: "tambien" }, [
+        boton(T.accion.sincronizar_reloj, async () => {
+          ui.reloj = await llamar("comprobar_reloj");
+          hora.textContent = horaTexto();
+          pintarSituacion();
+          if (ui.reloj && ui.reloj.precision === "http_date") {
+            avisar({ texto: T.aviso.reloj_precision_reducida });
+          }
+        }),
+        boton(T.accion.reconstruir_indice, async () => {
+          await llamar("reconstruir_indice");
+          await pintar();
+        }),
+      ]),
     ]),
-    el("section", { clase: "panel" }, [
-      el("h2", { texto: T.preferencias.conformidad }),
-      el("pre", { clase: "mono", texto: declaracion, style: "white-space: pre-wrap;" }),
+
+    el("section", { clase: "tarjeta" }, [
+      el("h2", { texto: T.ajustes.carpeta_trabajo }),
+      el("p", { clase: "mono", texto: ui.repositorio || "" }),
+    ]),
+
+    el("details", { clase: "detalle" }, [
+      el("summary", { texto: T.ajustes.ficha_tecnica }),
+      el("div", { clase: "cuerpo" }, [
+        el("p", { clase: "nota", texto: T.ajustes.nota_ficha }),
+        el("pre", { clase: "mono", texto: declaracion, style: "white-space: pre-wrap;" }),
+      ]),
     ]),
   ]);
 }
@@ -1344,7 +1590,7 @@ function aplicarTema(valor) {
   else document.documentElement.setAttribute("data-tema", valor);
 }
 
-// --- Atajos de teclado. Toda acción frecuente es accesible por teclado. ---
+// --- Atajos de teclado ---
 
 document.addEventListener("keydown", (e) => {
   if (e.target.matches("input, select, textarea")) return;
@@ -1362,7 +1608,7 @@ document.addEventListener("keydown", (e) => {
     e.preventDefault();
     dialogoCrearSesion(ui.proyecto);
   } else if (e.key === "Escape" && ui.ruta === "proyecto" && !$("#diálogo").open) {
-    ir("catalogo");
+    ir("proyectos");
   }
 });
 
@@ -1376,14 +1622,11 @@ async function arrancar() {
   try {
     apertura = await invoke("abrir_repositorio", { raiz: sugerida });
   } catch {
-    // El repositorio no existe todavía: se ofrece crearlo en la ruta sugerida.
+    // La carpeta de trabajo no existe todavía: se ofrece crearla donde toca.
     const r = await confirmar({
       titulo: T.app.nombre,
-      detalle:
-        "No hay ningún repositorio en " +
-        sugerida +
-        ". Una sola raíz local por persona, sin espacios y fuera de carpetas sincronizadas con servicios personales.",
-      etiquetaConfirmar: "Crear repositorio",
+      detalle: fmt(T.aviso.sin_carpeta_trabajo, { ruta: sugerida }),
+      etiquetaConfirmar: T.aviso.crear_carpeta_trabajo,
     });
     if (r) apertura = await llamar("crear_repositorio", { raiz: sugerida });
   }
@@ -1391,27 +1634,28 @@ async function arrancar() {
   if (apertura) {
     ui.repositorio = apertura.raiz;
     if (apertura.aviso_sincronizacion) {
-      mostrarError(fmt(T.error.raiz_sincronizada, { servicio: apertura.aviso_sincronizacion }));
+      avisar({
+        texto: fmt(T.error.raiz_sincronizada, { servicio: apertura.aviso_sincronizacion }),
+        tono: "malo",
+      });
     } else if (apertura.operaciones_a_medias > 0 || apertura.temporales_abandonados > 0) {
-      // Recuperación tras cierre inesperado.
+      // Recuperación tras un cierre inesperado.
       const r = await confirmar({
         titulo: T.app.nombre,
         aviso: fmt(T.aviso.operacion_a_medias, { n: apertura.operaciones_a_medias }),
-        detalle:
-          apertura.temporales_abandonados +
-          " archivos temporales de escritura atómica quedaron abandonados. Los archivos de destino conservan su contenido anterior.",
-        etiquetaConfirmar: "Suprimir los temporales",
+        detalle: fmt(T.aviso.temporales, { n: apertura.temporales_abandonados }),
+        etiquetaConfirmar: T.accion.aceptar,
       });
       if (r) await llamar("limpiar_temporales");
     }
   }
 
-  // El reloj se consulta al arrancar (apartado 22.3.1).
+  // La hora se consulta al arrancar (apartado 22.3.1).
   ui.reloj = await llamar("reloj_conocido");
-  pintar();
+  await pintar();
   invoke("comprobar_reloj").then((r) => {
     ui.reloj = r;
-    pintarEstado();
+    pintarSituacion();
   });
 }
 

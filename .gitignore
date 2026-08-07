@@ -7,3 +7,7 @@ dist/
 
 # Salida de los empaquetadores
 /target/release/bundle/
+
+# Salida de la interfaz nativa de macOS
+/app/macos/.build/
+/app/macos/salida/

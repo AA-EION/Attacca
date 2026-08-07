@@ -69,10 +69,29 @@ Attacca adopta la presentación guiada. Los requisitos que ello activa:
 | Requisito | Cómo se cumple |
 |---|---|
 | Determinar la etapa activa a partir del manifiesto y del contenido, no de una preferencia de interfaz | `stage::active_stage` recibe el manifiesto y la evidencia observada en el árbol. Ningún valor almacenado en la interfaz interviene. Acreditado en `la_etapa_no_procede_de_una_preferencia_guardada` |
-| No impedir el acceso a las demás carpetas | El panel «Otras carpetas del proyecto» las lista todas y las presenta en una acción |
+| No impedir el acceso a las demás carpetas | El panel «Otras carpetas» las lista todas y las presenta en una acción |
 | Ofrecer en todo momento una acción que abra la carpeta en el explorador del sistema | Presente en la vista de carpeta y con atajo de teclado `Ctrl E` |
 | No cerrar, bloquear ni desmontar archivos abiertos por otro proceso al cambiar la carpeta presentada | Cambiar de carpeta es una operación de lectura de la interfaz. Attacca no abre descriptores sobre el material que presenta, no llama a ninguna función de cierre y no monta ni desmonta volúmenes. La detección de descriptores abiertos solo observa |
-| Indicar etapa, custodia y réplica sin exigir ninguna acción | Presentes de forma permanente en la barra inferior, junto con el nivel, la conformidad, el presupuesto de ruta y el estado del reloj |
+| Indicar etapa, custodia y réplica sin exigir ninguna acción | Los tres, y solo los tres, de forma permanente en la barra inferior. El nivel, la conformidad y el presupuesto de ruta se retiraron de ahí a la sección de detalle: el requisito nombra tres datos, y añadirle otros tres los vuelve a todos menos visibles |
+
+#### El vocabulario de la interfaz no es el de la norma
+
+El apartado 44.2 fija requisitos sobre el comportamiento de la presentación
+—de dónde se deduce la etapa, a qué carpetas se puede llegar, qué acción está
+disponible siempre, qué no debe cerrarse, qué debe verse sin pedirlo— y ninguno
+sobre las palabras con que se rotula. Su último párrafo lo cierra en sentido
+contrario: una implementación no debe condicionar la validez del material a su
+forma de presentación.
+
+Attacca emplea por eso dos registros. El recorrido de trabajo habla llano
+—«Dejar el proyecto a otro estudio»— y la sección de detalle emplea el
+vocabulario del apartado 3 literalmente —«Ceder custodia»—, que es donde sirve:
+para citar un apartado, para auditar y para entenderse con otra implementación.
+
+Los dos registros están en un solo archivo por interfaz y
+`scripts/auditar-redaccion.py` los comprueba en cada cambio. Lo que acredita la
+conformidad siguen siendo los manifiestos y el árbol, conforme al apartado 42,
+no los rótulos.
 
 ---
 

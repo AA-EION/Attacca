@@ -397,7 +397,7 @@ mod tests {
 
     #[test]
     fn bloquea_la_escritura_en_una_replica_que_no_es_la_activa() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let mut p = ProjectManifest::new(dir.path().join("PROJECT.yaml"));
         p.doc_mut()
             .ensure_map("replication")
@@ -415,15 +415,15 @@ mod tests {
 
     #[test]
     fn una_copia_unica_sin_inventario_admite_escritura() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let p = ProjectManifest::new(dir.path().join("PROJECT.yaml"));
         assert!(require_active_replica(&p, "cualquiera").is_ok());
     }
 
     #[test]
     fn detecta_la_divergencia_al_reconectar() {
-        let activa = tempfile::tempdir().unwrap();
-        let otra = tempfile::tempdir().unwrap();
+        let activa = crate::pruebas::raiz_temporal().unwrap();
+        let otra = crate::pruebas::raiz_temporal().unwrap();
         fs::write(activa.path().join("a.wav"), b"contenido").unwrap();
         fs::write(otra.path().join("a.wav"), b"contenido").unwrap();
         assert_eq!(

@@ -846,8 +846,8 @@ mod tests {
     }
 
     fn escenario() -> Escenario {
-        let dir_a = tempfile::tempdir().unwrap();
-        let dir_b = tempfile::tempdir().unwrap();
+        let dir_a = crate::pruebas::raiz_temporal().unwrap();
+        let dir_b = crate::pruebas::raiz_temporal().unwrap();
         let emisor = Repository::create(dir_a.path().join(".stave")).unwrap();
         let receptor = Repository::create(dir_b.path().join(".stave")).unwrap();
         let mut p = project::create(

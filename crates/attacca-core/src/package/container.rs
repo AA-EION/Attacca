@@ -459,7 +459,7 @@ mod tests {
 
     #[test]
     fn la_primera_entrada_es_mimetype_sin_comprimir() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let c = construir(dir.path(), "STAVE-XCHG_2026-08-06_A_B_0007");
 
         let mut zip = ZipArchive::new(File::open(&c).unwrap()).unwrap();
@@ -474,7 +474,7 @@ mod tests {
 
     #[test]
     fn solo_hay_una_entrada_de_primer_nivel_ademas_de_mimetype() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let c = construir(dir.path(), "STAVE-XCHG_2026-08-06_A_B_0007");
         let info = verify_structure(&c).unwrap();
         assert_eq!(info.base_dir, "STAVE-XCHG_2026-08-06_A_B_0007");
@@ -494,7 +494,7 @@ mod tests {
 
     #[test]
     fn un_contenedor_con_ruta_no_admitida_no_se_extrae() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let malicioso = dir.path().join("malicioso.stave");
         {
             let mut zip = ZipWriter::new(File::create(&malicioso).unwrap());
@@ -524,7 +524,7 @@ mod tests {
 
     #[test]
     fn rechaza_un_enlace_simbolico() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let c = dir.path().join("enlace.stave");
         {
             let mut zip = ZipWriter::new(File::create(&c).unwrap());
@@ -542,7 +542,7 @@ mod tests {
 
     #[test]
     fn rechaza_un_contenedor_sin_mimetype_en_primera_posicion() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let c = dir.path().join("desordenado.stave");
         {
             let mut zip = ZipWriter::new(File::create(&c).unwrap());
@@ -562,7 +562,7 @@ mod tests {
 
     #[test]
     fn la_construccion_es_atomica_frente_a_la_cancelacion() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let src = paquete(dir.path(), "STAVE-XCHG_2026-08-06_A_B_0008");
         let destino = dir.path().join("paquete.stave");
 
@@ -581,7 +581,7 @@ mod tests {
 
     #[test]
     fn el_ciclo_de_construccion_y_extraccion_conserva_el_contenido() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let c = construir(dir.path(), "STAVE-XCHG_2026-08-06_A_B_0009");
         let destino = dir.path().join("extraido");
         let (mut prog, canc) = silent_progress();
@@ -601,7 +601,7 @@ mod tests {
 
     #[test]
     fn el_progreso_informa_de_cada_archivo() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let src = paquete(dir.path(), "STAVE-XCHG_2026-08-06_A_B_0010");
         let destino = dir.path().join("p.stave");
         let mut vistos = Vec::new();
@@ -620,7 +620,7 @@ mod tests {
 
     #[test]
     fn repetir_la_construccion_no_produce_efectos_distintos() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let src = paquete(dir.path(), "STAVE-XCHG_2026-08-06_A_B_0011");
         let destino = dir.path().join("p.stave");
         let (mut prog, canc) = silent_progress();

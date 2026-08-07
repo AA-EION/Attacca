@@ -301,7 +301,7 @@ mod tests {
 
     #[test]
     fn un_arbol_sin_archivos_abiertos_da_resultado_limpio() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         fs::write(dir.path().join("a.wav"), b"audio").unwrap();
         let d = open_for_write(dir.path());
         if let Detection::Checked(files) = &d {
@@ -315,7 +315,7 @@ mod tests {
         use std::io::Read;
         use std::process::{Command, Stdio};
 
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let objetivo = dir.path().join("sesion.dat");
         fs::write(&objetivo, b"x").unwrap();
 

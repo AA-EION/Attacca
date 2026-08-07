@@ -152,7 +152,7 @@ mod tests {
 
     #[test]
     fn el_marcador_se_escribe_y_se_suprime() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         write_marker(dir.path(), &marcador()).unwrap();
         let ruta = dir.path().join(super::super::CUSTODY_LOCK_FILE);
         assert!(ruta.exists());

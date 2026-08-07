@@ -494,7 +494,7 @@ mod tests {
 
     #[test]
     fn el_acuse_se_relee_desde_el_disco() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let ruta = dir.path().join("RECEIPT.yaml");
         let mut r = Receipt::new(&ruta);
         *r.doc_mut() = build(

@@ -178,7 +178,7 @@ mod tests {
 
     #[test]
     fn informa_del_espacio_del_volumen() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let libre = available_bytes(dir.path());
         if let Some(bytes) = libre {
             assert!(bytes > 0, "el volumen informa de 0 bytes libres");
@@ -187,7 +187,7 @@ mod tests {
 
     #[test]
     fn admite_una_escritura_pequena_y_rechaza_una_desmedida() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         assert!(ensure_available(dir.path(), 1024).is_ok());
         if available_bytes(dir.path()).is_some() {
             let r = ensure_available(dir.path(), u64::MAX / 2);
@@ -197,7 +197,7 @@ mod tests {
 
     #[test]
     fn consulta_una_ruta_que_todavia_no_existe() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let futuro = dir.path().join("a/b/c/paquete.stave");
         assert!(ensure_available(&futuro, 1024).is_ok());
     }

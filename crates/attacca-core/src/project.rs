@@ -703,7 +703,7 @@ mod tests {
     use super::*;
 
     fn repo() -> (tempfile::TempDir, Repository) {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let repo = Repository::create(dir.path().join(".stave")).unwrap();
         (dir, repo)
     }

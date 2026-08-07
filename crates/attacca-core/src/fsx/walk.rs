@@ -200,7 +200,7 @@ mod tests {
 
     #[test]
     fn el_recorrido_omite_los_regenerables_y_es_estable() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         fs::create_dir_all(dir.path().join("02_SESSIONS/Reaper/Freeze Files")).unwrap();
         fs::write(dir.path().join("PROJECT.yaml"), b"uid: A").unwrap();
         fs::write(dir.path().join("02_SESSIONS/Reaper/s.rpp"), b"sesion").unwrap();
@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     fn suma_los_tamanos() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         fs::write(dir.path().join("a"), vec![0u8; 100]).unwrap();
         fs::write(dir.path().join("b"), vec![0u8; 55]).unwrap();
         assert_eq!(total_bytes(&conserved_files(dir.path())), 155);

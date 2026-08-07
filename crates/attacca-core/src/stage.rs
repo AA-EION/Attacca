@@ -405,7 +405,7 @@ mod tests {
 
     #[test]
     fn observa_el_contenido_real_del_proyecto() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         fs::create_dir_all(dir.path().join("02_SESSIONS/Reaper")).unwrap();
         fs::create_dir_all(dir.path().join("05_STEMS")).unwrap();
         // Una carpeta con solo regenerables cuenta como vacía.

@@ -278,10 +278,9 @@ pub fn merge_chronology(
     // Los recibidos conservan su orden relativo y se numeran a continuación de
     // los propios.
     pendientes.sort_by_key(|e| e.seq);
-    let mut siguiente = out.iter().map(|e| e.seq).max().unwrap_or(0) + 1;
-    for mut entry in pendientes {
-        entry.seq = siguiente;
-        siguiente += 1;
+    let primero = out.iter().map(|e| e.seq).max().unwrap_or(0) + 1;
+    for (desplazamiento, mut entry) in pendientes.into_iter().enumerate() {
+        entry.seq = primero + desplazamiento as i64;
         out.push(entry);
     }
     out

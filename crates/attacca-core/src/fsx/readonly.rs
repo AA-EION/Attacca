@@ -161,7 +161,7 @@ mod tests {
 
     #[test]
     fn aplica_y_retira_el_bloqueo_de_un_archivo() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let f = dir.path().join("a.txt");
         fs::write(&f, b"x").unwrap();
         set_file_readonly(&f, true).unwrap();
@@ -172,7 +172,7 @@ mod tests {
 
     #[test]
     fn bloquea_el_arbol_conservando_la_lectura() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let sub = dir.path().join("02_SESSIONS/proto");
         fs::create_dir_all(&sub).unwrap();
         fs::write(sub.join("sesion.txt"), b"datos").unwrap();
@@ -199,7 +199,7 @@ mod tests {
 
     #[test]
     fn la_sonda_no_deja_residuos() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let caps = probe(dir.path());
         let restos: Vec<_> = fs::read_dir(dir.path())
             .unwrap()

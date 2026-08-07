@@ -166,7 +166,7 @@ mod tests {
 
     #[test]
     fn una_operacion_concluida_no_queda_abierta() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let j = Journal::at(dir.path());
         let op = j
             .begin("emitir_paquete", Some("UID"), &[], json!({}))
@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn una_operacion_interrumpida_se_detecta_al_arrancar() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let j = Journal::at(dir.path());
         j.begin("derivar_proyecto", Some("UID"), &[], json!({"reason": "x"}))
             .unwrap();
@@ -192,7 +192,7 @@ mod tests {
 
     #[test]
     fn revertir_suprime_solo_lo_que_la_operacion_creo() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let j = Journal::at(dir.path());
 
         let anterior = dir.path().join("material-anterior.wav");
@@ -222,7 +222,7 @@ mod tests {
 
     #[test]
     fn detecta_y_suprime_temporales_abandonados() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let huerfano = dir
             .path()
             .join(format!(".PROJECT.yaml.1.0{}", atomic::TEMP_SUFFIX));
@@ -240,7 +240,7 @@ mod tests {
 
     #[test]
     fn un_diario_ilegible_no_impide_arrancar() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         std::fs::write(dir.path().join(JOURNAL_FILE), b"esto no es JSON").unwrap();
         let r = detect(dir.path(), dir.path()).unwrap();
         assert!(r.incomplete.is_empty());
@@ -248,7 +248,7 @@ mod tests {
 
     #[test]
     fn el_diario_admite_varias_operaciones_simultaneas() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let j = Journal::at(dir.path());
         let a = j
             .begin("emitir_paquete", Some("U1"), &[], json!({}))

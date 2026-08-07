@@ -4,6 +4,11 @@
 //! del apartado 45 de la norma para la clase `M`. Cada prueba lleva el nombre
 //! del caso que acredita.
 
+// El andamiaje es el mismo que el de las pruebas unitarias; se incluye en
+// lugar de duplicarlo.
+#[path = "../src/pruebas.rs"]
+mod pruebas;
+
 use attacca_core::clock::SyncState;
 use attacca_core::custody::{CustodyAction, CustodyState};
 use attacca_core::doc::Node;
@@ -28,7 +33,7 @@ struct Estudio {
 }
 
 fn estudio(org: &str, actor: &str) -> Estudio {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = pruebas::raiz_temporal().unwrap();
     let repo = Repository::create(dir.path().join(".stave")).unwrap();
     Estudio {
         _dir: dir,
@@ -907,7 +912,7 @@ fn conmutacion_de_replica_y_deteccion_de_divergencia() {
     p.save().unwrap();
 
     // Conmutación hacia un volumen portátil.
-    let portatil = tempfile::tempdir().unwrap();
+    let portatil = pruebas::raiz_temporal().unwrap();
     let destino = portatil.path().join("2026-08-06_Tema_ORIG");
     let origen = p.root().to_path_buf();
     let informe = attacca_core::replica::switch_active(
@@ -1029,7 +1034,7 @@ fn contenedor_extraido_con_utilidad_del_sistema() {
 
     // Extracción a un directorio limpio y verificación con los manifiestos, tal
     // como haría `sha256sum -c`.
-    let fuera = tempfile::tempdir().unwrap();
+    let fuera = pruebas::raiz_temporal().unwrap();
     let (mut prog, canc) = container::silent_progress();
     let mut pr = Progress {
         on_progress: &mut prog,

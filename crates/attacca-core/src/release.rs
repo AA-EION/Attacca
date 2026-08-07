@@ -189,7 +189,7 @@ mod tests {
     use crate::project::NewProject;
 
     fn entorno() -> (tempfile::TempDir, Repository) {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let repo = Repository::create(dir.path().join(".stave")).unwrap();
         (dir, repo)
     }

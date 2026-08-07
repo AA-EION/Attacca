@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn conserva_los_campos_no_comprendidos_al_reescribir() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let ruta = dir.path().join(PROJECT_FILE);
         // Manifiesto escrito por otra implementación, con campos que Attacca no
         // conoce, en el nivel superior y anidados.
@@ -143,7 +143,7 @@ mod tests {
 
     #[test]
     fn la_escritura_repetida_produce_los_mismos_bytes() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let ruta = dir.path().join(PROJECT_FILE);
         let mut m = Manifest::new(&ruta, ArtifactKind::Project);
         m.doc.set("uid", Node::str("01J9ZQ8F3K7N2VYB4T6XM0RSAE"));
@@ -160,7 +160,7 @@ mod tests {
 
     #[test]
     fn save_verbatim_no_altera_la_implementacion_declarada() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let ruta = dir.path().join(PROJECT_FILE);
         let mut m = Manifest::new(&ruta, ArtifactKind::Project);
         m.doc

@@ -137,7 +137,7 @@ mod tests {
 
     #[test]
     fn escribe_y_sustituye_sin_dejar_temporales() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let destino = dir.path().join("PROJECT.yaml");
         write_str(&destino, "uid: A\n").unwrap();
         assert_eq!(fs::read_to_string(&destino).unwrap(), "uid: A\n");
@@ -148,7 +148,7 @@ mod tests {
 
     #[test]
     fn crea_el_directorio_contenedor() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let destino = dir.path().join("a/b/c/PROJECT.yaml");
         write_str(&destino, "x: 1\n").unwrap();
         assert!(destino.exists());
@@ -156,7 +156,7 @@ mod tests {
 
     #[test]
     fn detecta_temporales_abandonados() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let huerfano = dir.path().join(format!(".PROJECT.yaml.1.0{TEMP_SUFFIX}"));
         fs::write(&huerfano, b"parcial").unwrap();
         let encontrados = find_abandoned(dir.path());
@@ -166,7 +166,7 @@ mod tests {
 
     #[test]
     fn sustituye_un_destino_en_solo_lectura() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let destino = dir.path().join("CUSTODY.lock");
         write_str(&destino, "a\n").unwrap();
         super::super::readonly::set_file_readonly(&destino, true).unwrap();

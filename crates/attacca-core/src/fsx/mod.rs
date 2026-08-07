@@ -98,7 +98,7 @@ mod tests {
 
     #[test]
     fn la_copia_omite_regenerables_y_carpetas_excluidas() {
-        let origen = tempfile::tempdir().unwrap();
+        let origen = crate::pruebas::raiz_temporal().unwrap();
         fs::create_dir_all(origen.path().join("08_DELIVERY/2026-08-06_Sello")).unwrap();
         fs::create_dir_all(origen.path().join("00_ADMIN/Notes")).unwrap();
         fs::write(origen.path().join("PROJECT.yaml"), b"uid: A").unwrap();
@@ -110,7 +110,7 @@ mod tests {
         )
         .unwrap();
 
-        let destino = tempfile::tempdir().unwrap();
+        let destino = crate::pruebas::raiz_temporal().unwrap();
         let dst = destino.path().join("derivado");
         // El apartado 14.4.2 excluye de la derivación los paquetes ya emitidos.
         let n = copy_tree(origen.path(), &dst, &["08_DELIVERY", "09_TRANSFER"]).unwrap();
@@ -124,12 +124,12 @@ mod tests {
 
     #[test]
     fn la_copia_restituye_la_escritura_sobre_el_destino() {
-        let origen = tempfile::tempdir().unwrap();
+        let origen = crate::pruebas::raiz_temporal().unwrap();
         let f = origen.path().join("a.txt");
         fs::write(&f, b"x").unwrap();
         readonly::set_file_readonly(&f, true).unwrap();
 
-        let destino = tempfile::tempdir().unwrap();
+        let destino = crate::pruebas::raiz_temporal().unwrap();
         let dst = destino.path().join("copia");
         copy_tree(origen.path(), &dst, &[]).unwrap();
         assert!(!fs::metadata(dst.join("a.txt"))

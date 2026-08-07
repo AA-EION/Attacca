@@ -745,7 +745,7 @@ mod tests {
     use crate::project::{self, NewProject};
 
     fn entorno() -> (tempfile::TempDir, Repository, ProjectManifest) {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let repo = Repository::create(dir.path().join(".stave")).unwrap();
         let mut p = project::create(
             &repo,

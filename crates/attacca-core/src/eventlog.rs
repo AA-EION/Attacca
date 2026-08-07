@@ -305,7 +305,7 @@ mod tests {
 
     #[test]
     fn la_entrada_reproduce_el_esquema_del_anexo_b_6() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let log = EventLog::at(dir.path());
         let e = log
             .append(
@@ -328,7 +328,7 @@ mod tests {
 
     #[test]
     fn el_registro_es_una_entrada_por_linea() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let log = EventLog::at(dir.path());
         for i in 0..5 {
             log.append("a", event::PROJECT_CREATED, Some("U"), json!({"n": i}))
@@ -344,7 +344,7 @@ mod tests {
 
     #[test]
     fn cada_entrada_encadena_con_la_anterior() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let log = EventLog::at(dir.path());
         let a = log
             .append("a", event::PROJECT_CREATED, None, json!({}))
@@ -359,7 +359,7 @@ mod tests {
 
     #[test]
     fn la_supresion_de_una_entrada_intermedia_es_detectable() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let log = EventLog::at(dir.path());
         for i in 0..4 {
             log.append("a", event::PROJECT_CREATED, None, json!({"n": i}))
@@ -380,7 +380,7 @@ mod tests {
 
     #[test]
     fn la_alteracion_del_contenido_es_detectable() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let log = EventLog::at(dir.path());
         log.append("a", event::PACKAGE_EMITTED, None, json!({"files": 128}))
             .unwrap();
@@ -410,7 +410,7 @@ mod tests {
 
     #[test]
     fn filtra_por_proyecto() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let log = EventLog::at(dir.path());
         log.append("a", event::PROJECT_CREATED, Some("U1"), json!({}))
             .unwrap();

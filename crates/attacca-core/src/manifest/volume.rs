@@ -327,7 +327,7 @@ mod tests {
 
     #[test]
     fn el_identificador_persistente_sobrevive_a_una_reconexion() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let primero =
             ensure_descriptor(dir.path(), "Local", VolumeRole::Local, "/home/u/.stave").unwrap();
         let uuid = primero.uuid().unwrap().to_string();
@@ -349,7 +349,7 @@ mod tests {
 
     #[test]
     fn la_sonda_de_capacidades_se_reeja_en_cada_conexion() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let d =
             ensure_descriptor(dir.path(), "Local", VolumeRole::Local, "/home/u/.stave").unwrap();
         // En un sistema de archivos corriente de Linux el atributo se sostiene.

@@ -229,7 +229,7 @@ mod tests {
     use std::fs;
 
     fn arbol() -> tempfile::TempDir {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         fs::create_dir_all(dir.path().join("07_MASTER")).unwrap();
         fs::write(dir.path().join("PROJECT.yaml"), b"uid: A\n").unwrap();
         fs::write(dir.path().join("07_MASTER/m.wav"), b"audio del master").unwrap();

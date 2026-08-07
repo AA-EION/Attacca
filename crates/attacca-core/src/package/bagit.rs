@@ -432,7 +432,7 @@ mod tests {
 
     #[test]
     fn la_estructura_reproduce_el_apartado_32_1() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let p = paquete(dir.path());
         for archivo in [
             BAGIT_TXT,
@@ -451,7 +451,7 @@ mod tests {
 
     #[test]
     fn el_manifiesto_de_carga_expresa_rutas_relativas_a_la_raiz_del_paquete() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let p = paquete(dir.path());
         let m = IntegrityManifest::load(&p.root().join(MANIFEST_TXT)).unwrap();
         assert!(m.digest_of("data/content/07_MASTER/m.wav").is_some());
@@ -462,7 +462,7 @@ mod tests {
 
     #[test]
     fn el_manifiesto_de_etiquetas_cubre_el_manifiesto_de_carga() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let p = paquete(dir.path());
         let t = IntegrityManifest::load(&p.root().join(TAGMANIFEST_TXT)).unwrap();
         // Apartado 32.1: debe cubrir EXCHANGE.yaml, CUSTODY.txt y
@@ -474,7 +474,7 @@ mod tests {
 
     #[test]
     fn un_paquete_intacto_supera_la_verificacion() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let p = paquete(dir.path());
         let v = p.verify().unwrap();
         assert!(v.package_integrity_ok(), "{v:?}");
@@ -484,7 +484,7 @@ mod tests {
 
     #[test]
     fn detecta_la_alteracion_del_material_y_la_del_manifiesto() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let p = paquete(dir.path());
 
         fs::write(p.content().join("07_MASTER/m.wav"), b"audio alterado").unwrap();
@@ -504,7 +504,7 @@ mod tests {
 
     #[test]
     fn detecta_un_archivo_no_declarado_en_la_carga() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let p = paquete(dir.path());
         fs::write(p.content().join("intruso.wav"), b"no declarado").unwrap();
         let v = p.verify().unwrap();

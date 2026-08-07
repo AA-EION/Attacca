@@ -29,6 +29,8 @@ pub mod naming;
 pub mod nonconformity;
 pub mod package;
 pub mod project;
+#[cfg(test)]
+mod pruebas;
 pub mod release;
 pub mod replica;
 pub mod repo;

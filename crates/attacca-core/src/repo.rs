@@ -269,7 +269,7 @@ mod tests {
 
     #[test]
     fn crea_los_cinco_dominios_y_los_cuatro_estados() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let repo = Repository::create(dir.path().join("stave")).unwrap();
         for d in DOMAINS {
             assert!(repo.domain(d).is_dir(), "falta {d}");
@@ -281,7 +281,7 @@ mod tests {
 
     #[test]
     fn no_crea_carpetas_de_proyecto_por_anticipado() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let repo = Repository::create(dir.path().join("stave")).unwrap();
         // El apartado 7.1 desaconseja el andamiaje sin contenido.
         for d in OPTIONAL_PROJECT_DIRS {
@@ -291,7 +291,7 @@ mod tests {
 
     #[test]
     fn descubre_los_proyectos_recorriendo_el_arbol() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let repo = Repository::create(dir.path().join("stave")).unwrap();
         let a = repo
             .domain("20_PROJECTS")
@@ -312,7 +312,7 @@ mod tests {
 
     #[test]
     fn la_carga_de_un_paquete_congelado_no_se_cuenta_como_proyecto() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let repo = Repository::create(dir.path().join("stave")).unwrap();
         let proyecto = repo
             .domain("20_PROJECTS")
@@ -338,7 +338,7 @@ mod tests {
 
     #[test]
     fn un_paquete_recibido_en_la_cuarentena_tampoco_se_cuenta() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let repo = Repository::create(dir.path().join("stave")).unwrap();
         let paquete = repo.inbox().join("STAVE-XCHG_2026-08-06_A_B_0007");
         fs::create_dir_all(paquete.join("data/content")).unwrap();
@@ -353,7 +353,7 @@ mod tests {
 
     #[test]
     fn descubre_releases_y_sus_proyectos_por_separado() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let repo = Repository::create(dir.path().join("stave")).unwrap();
         let rel = repo
             .domain("20_PROJECTS")
@@ -377,7 +377,7 @@ mod tests {
 
     #[test]
     fn distingue_paquetes_en_verificacion_del_atraso_de_la_cuarentena() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let repo = Repository::create(dir.path().join("stave")).unwrap();
         fs::write(
             repo.inbox().join("STAVE-XCHG_2026-08-06_A_B_0007.stave"),
@@ -415,7 +415,7 @@ mod tests {
 
     #[test]
     fn rechaza_una_raiz_con_caracteres_no_admitidos() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         assert!(Repository::create(dir.path().join("mi repositorio")).is_err());
         assert!(Repository::create(dir.path().join(".stave")).is_ok());
     }

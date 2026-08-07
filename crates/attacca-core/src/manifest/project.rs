@@ -525,7 +525,7 @@ mod tests {
 
     #[test]
     fn el_nivel_se_eleva_pero_no_se_reduce() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let mut m = ProjectManifest::new(dir.path().join("PROJECT.yaml"));
         m.0.doc = manifiesto_base();
         assert_eq!(m.level(), Level::B);
@@ -538,7 +538,7 @@ mod tests {
 
     #[test]
     fn la_secuencia_de_custodia_es_consecutiva() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let mut m = ProjectManifest::new(dir.path().join("PROJECT.yaml"));
         m.0.doc = manifiesto_base();
         assert_eq!(m.next_custody_seq(), 1);
@@ -550,7 +550,7 @@ mod tests {
 
     #[test]
     fn el_identificador_se_congela_tras_el_primer_envio() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let mut m = ProjectManifest::new(dir.path().join("PROJECT.yaml"));
         m.0.doc = manifiesto_base();
         assert!(!m.id_is_frozen());
@@ -560,7 +560,7 @@ mod tests {
 
     #[test]
     fn el_cambio_de_identificador_deja_el_valor_anterior_con_marca_temporal() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         let mut m = ProjectManifest::new(dir.path().join("PROJECT.yaml"));
         m.0.doc = manifiesto_base();
         m.record_id_change("2026-08-06_Tema-Viejo_ORIG");

@@ -129,7 +129,7 @@ mod tests {
 
     #[test]
     fn se_escribe_y_se_suprime_al_activar() {
-        let dir = tempfile::tempdir().unwrap();
+        let dir = crate::pruebas::raiz_temporal().unwrap();
         write_marker(dir.path(), &marcador()).unwrap();
         assert!(dir.path().join(super::super::REPLICA_HOLD_FILE).exists());
         remove_marker(dir.path()).unwrap();

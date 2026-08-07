@@ -59,7 +59,7 @@ apartado 6 de este documento.
 | No almacenar el audio en un sistema de archivos reservado ni interponer capas | Attacca no interpone ninguna capa. El audio son archivos corrientes en carpetas corrientes |
 | No incluir en un paquete elementos que solo Attacca interprete, ni omitir campos exigibles | El paquete contiene únicamente los artefactos del apartado 32.1. El manifiesto de intercambio se valida contra los campos exigibles antes de emitir |
 | Respetar el estado de custodia declarado | Toda operación de modificación comprueba el estado antes de actuar. El marcador no se suprime mientras el estado lo exija |
-| Registrar los asientos de la cronología sin modificar ni suprimir los existentes | Los asientos propios nunca se modifican. Véase la interpretación del apartado 7.2 |
+| Registrar los asientos de la cronología sin modificar ni suprimir los existentes | Ningún asiento se suprime ni se altera en su contenido. Al fusionar dos series el número de secuencia se recalcula, y solo él. Véase la interpretación del apartado 7.2 |
 | Producir contenedores extraíbles con utilidades de uso general y leer los de otra implementación | Acreditado en `contenedor_extraido_con_utilidad_del_sistema` y comprobado a mano con `unzip` y `sha256sum` |
 
 ### 3.1 Presentación guiada (apartado 44.2)
@@ -167,17 +167,26 @@ los de la otra: el cedente registra `custody_transferred` al recibir el acuse, y
 el cesionario ha registrado ya `received`, `imported` y `custody_assumed`. Ambas
 series parten del mismo número y colisionan.
 
-El apartado 14.3.4 exige a la vez que los números sean consecutivos, que ninguno
-se duplique, y que al recibir un retorno se incorporen los asientos de la otra
-parte «conservando su orden y sin suprimir ninguno». Con numeración
-independiente, las tres condiciones solo se satisfacen renumerando una de las
-series.
+El apartado 14.3.4 exige cuatro cosas a la vez: que los números sean
+consecutivos, que ninguno se duplique, que las marcas temporales no retrocedan,
+y que al recibir un retorno se incorporen los asientos de la otra parte
+«conservando su orden y sin suprimir ninguno». Con numeración independiente, las
+cuatro solo se satisfacen renumerando.
 
-Attacca renumera los asientos **recibidos**, nunca los propios, y conserva su
-orden relativo. Es la lectura que preserva la prohibición de suprimir y de
-reordenar, y la única que produce una cronología sin duplicados. El acto, el
-instante y la organización identifican cada asiento, de modo que un asiento ya
-presente no se duplica aunque su número difiera.
+Añadir los asientos recibidos a continuación de los propios cumple las tres
+primeras, pero no la tercera salvo que todos los propios precedan en el tiempo a
+todos los recibidos. No es el caso: el cedente registra `custody_transferred`
+cuando le llega el acuse, esto es, después de que el cesionario haya registrado
+`received`. Las dos series se entrelazan en el tiempo, y concatenarlas produce
+una cronología cuyo asiento 4 es anterior al 3.
+
+Attacca ordena la cronología fusionada **por instante** y la renumera de forma
+consecutiva desde 1. La ordenación es estable, con lo que cada parte conserva el
+orden relativo de sus asientos y ninguno se suprime. El precio es que los
+números propios pueden cambiar; el apartado 14.3.4 no los declara inmutables, y
+es la única lectura que satisface las cuatro exigencias a la vez. El acto, el
+instante y la organización identifican cada asiento, de modo que uno ya presente
+no se duplica aunque su número difiera.
 
 Esta interpretación se comunica al custodio conforme al apartado 21.3, por si
 procede fijar en una versión posterior un criterio de numeración entre partes.

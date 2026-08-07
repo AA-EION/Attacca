@@ -12,7 +12,11 @@ set -euo pipefail
 
 raiz="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 trabajo="$(mktemp -d)"
-trap 'rm -rf "$trabajo"' EXIT
+# La copia congelada de un envio queda en solo lectura, que es lo correcto, y
+# un usuario sin privilegios no puede suprimirla sin restituir antes el
+# permiso. El borrado del directorio de trabajo no es parte de lo que se
+# comprueba: si fallara, no debe dar por fallida la comprobacion.
+trap 'chmod -R u+w "$trabajo" 2>/dev/null || true; rm -rf "$trabajo" || true' EXIT
 
 # `sha256sum` en Linux, `shasum -a 256` en macOS. Windows en CI ejecuta este
 # guion bajo bash, que trae ambas.

@@ -244,14 +244,22 @@ pub fn check_chronology(entries: &[ChronologyEntry]) -> ChronologyCheck {
 /// el acuse, y el cesionario ha registrado ya `received`, `imported` y
 /// `custody_assumed`. Ambas series parten del mismo punto y colisionan.
 ///
-/// El apartado 14.3.4 exige tres cosas a la vez: que los números sean
-/// consecutivos, que ninguno se duplique y que al recibir un retorno se
-/// incorporen los asientos de la otra parte «conservando su orden y sin
-/// suprimir ninguno». Con numeración independiente, las tres solo pueden
-/// satisfacerse renumerando una de las series. Se renumeran los asientos
-/// recibidos, nunca los propios, y se conserva su orden relativo: es la lectura
-/// que preserva el requisito de no suprimir ni reordenar, y la única que
-/// produce una cronología sin duplicados.
+/// El apartado 14.3.4 exige cuatro cosas a la vez: que los números sean
+/// consecutivos, que ninguno se duplique, que las marcas temporales no
+/// retrocedan y que al recibir un retorno se incorporen los asientos de la otra
+/// parte «conservando su orden y sin suprimir ninguno».
+///
+/// Añadir los recibidos a continuación de los propios satisface las tres
+/// primeras solo si todos los propios preceden en el tiempo a todos los
+/// recibidos, y no es el caso: el cedente registra `custody_transferred` cuando
+/// le llega el acuse, esto es, después de que el cesionario haya registrado
+/// `received`. Las dos series se entrelazan en el tiempo.
+///
+/// La fusión ordena por instante y renumera de forma consecutiva desde 1. La
+/// ordenación es estable, con lo que cada parte conserva el orden relativo de
+/// sus asientos y ninguno se suprime. El precio es que los números propios
+/// pueden cambiar; el apartado 14.3.4 no los declara inmutables, y es la única
+/// lectura que satisface las cuatro exigencias a la vez.
 pub fn merge_chronology(
     own: &[ChronologyEntry],
     incoming: &[ChronologyEntry],
@@ -275,15 +283,30 @@ pub fn merge_chronology(
         }
     }
 
-    // Los recibidos conservan su orden relativo y se numeran a continuación de
-    // los propios.
     pendientes.sort_by_key(|e| e.seq);
-    let primero = out.iter().map(|e| e.seq).max().unwrap_or(0) + 1;
-    for (desplazamiento, mut entry) in pendientes.into_iter().enumerate() {
-        entry.seq = primero + desplazamiento as i64;
-        out.push(entry);
+    out.extend(pendientes);
+
+    // Orden por instante, estable: a igualdad de marca, cada parte conserva su
+    // orden. Un asiento con marca ilegible se queda junto al que lo precedía,
+    // en lugar de irse a un extremo.
+    let mut ultima = time::OffsetDateTime::UNIX_EPOCH;
+    let claves: Vec<time::OffsetDateTime> = out
+        .iter()
+        .map(|e| {
+            if let Ok(t) = clock::parse_rfc3339(&e.ts) {
+                ultima = t;
+            }
+            ultima
+        })
+        .collect();
+    let mut indices: Vec<usize> = (0..out.len()).collect();
+    indices.sort_by_key(|&i| claves[i]);
+
+    let mut fusion: Vec<ChronologyEntry> = indices.into_iter().map(|i| out[i].clone()).collect();
+    for (posicion, entry) in fusion.iter_mut().enumerate() {
+        entry.seq = posicion as i64 + 1;
     }
-    out
+    fusion
 }
 
 /// Vencimiento de una cesión (apartado 41.4).
@@ -481,16 +504,74 @@ mod tests {
             fusion.iter().map(|e| e.seq).collect::<Vec<_>>(),
             vec![1, 2, 3, 4, 5, 6]
         );
-        assert!(!check_chronology(&fusion).is_blocking());
-        assert!(check_chronology(&fusion).duplicate_seq.is_empty());
-        assert!(check_chronology(&fusion).missing_seq.is_empty());
-        // Los asientos propios conservan su número.
-        assert_eq!(fusion[2].action, CustodyAction::CustodyTransferred);
-        assert_eq!(fusion[2].seq, 3);
-        // Los recibidos conservan su orden relativo.
-        assert_eq!(fusion[3].action, CustodyAction::Received);
-        assert_eq!(fusion[4].action, CustodyAction::Imported);
-        assert_eq!(fusion[5].action, CustodyAction::CustodyAssumed);
+        // Sin duplicados, sin huecos y sin marcas que retrocedan.
+        assert!(check_chronology(&fusion).is_clean(), "{fusion:?}");
+
+        // El orden es el de los hechos, no el de la procedencia. El cedente
+        // registró `custody_transferred` a las 12:00, cuando le llegó el acuse,
+        // después de que el cesionario registrara los suyos.
+        assert_eq!(
+            fusion.iter().map(|e| e.action).collect::<Vec<_>>(),
+            vec![
+                CustodyAction::Exported,
+                CustodyAction::Sent,
+                CustodyAction::Received,
+                CustodyAction::Imported,
+                CustodyAction::CustodyAssumed,
+                CustodyAction::CustodyTransferred,
+            ]
+        );
+        // Cada parte conserva el orden relativo de sus propios asientos.
+        let posicion = |org: &str| -> Vec<CustodyAction> {
+            fusion
+                .iter()
+                .filter(|e| e.org == org)
+                .map(|e| e.action)
+                .collect()
+        };
+        assert_eq!(
+            posicion("Estudio B"),
+            vec![
+                CustodyAction::Received,
+                CustodyAction::Imported,
+                CustodyAction::CustodyAssumed,
+            ]
+        );
+    }
+
+    /// Con marcas de igual instante no hay orden que deducir, y la fusión ha de
+    /// conservar el de cada parte en lugar de barajarlos.
+    #[test]
+    fn la_fusion_conserva_el_orden_cuando_las_marcas_coinciden() {
+        let mismo = "2026-08-06T10:00:00-05:00";
+        let propios = vec![
+            asiento(1, CustodyAction::Exported, mismo),
+            asiento(2, CustodyAction::Sent, mismo),
+        ];
+        let recibidos: Vec<ChronologyEntry> = [
+            (1, CustodyAction::Received),
+            (2, CustodyAction::CustodyAssumed),
+        ]
+        .iter()
+        .map(|(seq, accion)| {
+            let mut e = asiento(*seq, *accion, mismo);
+            e.org = "Estudio B".into();
+            e
+        })
+        .collect();
+
+        let fusion = merge_chronology(&propios, &recibidos);
+        assert_eq!(fusion.len(), 4);
+        assert!(check_chronology(&fusion).is_clean(), "{fusion:?}");
+        assert_eq!(
+            fusion.iter().map(|e| e.action).collect::<Vec<_>>(),
+            vec![
+                CustodyAction::Exported,
+                CustodyAction::Sent,
+                CustodyAction::Received,
+                CustodyAction::CustodyAssumed,
+            ]
+        );
     }
 
     #[test]

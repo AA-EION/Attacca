@@ -211,8 +211,21 @@ impl Repository {
     }
 }
 
+/// Carpetas cuyo contenido es carga de paquetes, no estructura del repositorio.
+///
+/// Un paquete congelado en `08_DELIVERY` o en `09_TRANSFER` lleva en
+/// `data/content/` una copia del manifiesto del proyecto (apartado 32.1). Esa
+/// copia describe el material del envío, no un proyecto del repositorio:
+/// recorrerla produciría dos proyectos con el mismo identificador interno.
+const PACKAGE_DIRS: &[&str] = &["08_DELIVERY", "09_TRANSFER"];
+
 fn find_manifests(dir: &Path, filename: &str, out: &mut Vec<PathBuf>, depth: usize) {
     if depth > 8 {
+        return;
+    }
+    // Un directorio de paquete conforme a RFC 8493 se reconoce por `bagit.txt`.
+    // Su contenido no se recorre, con independencia de dónde resida.
+    if dir.join(crate::package::bagit::BAGIT_TXT).is_file() {
         return;
     }
     let Ok(entries) = std::fs::read_dir(dir) else {
@@ -225,6 +238,10 @@ fn find_manifests(dir: &Path, filename: &str, out: &mut Vec<PathBuf>, depth: usi
         if ft.is_file() && entry.file_name() == filename {
             hallado = true;
         } else if ft.is_dir() && !ft.is_symlink() {
+            let nombre = entry.file_name().to_string_lossy().to_string();
+            if PACKAGE_DIRS.contains(&nombre.as_str()) {
+                continue;
+            }
             subdirs.push(entry.path());
         }
     }
@@ -282,6 +299,45 @@ mod tests {
         let hallados = repo.discover_projects();
         assert_eq!(hallados.len(), 3, "{hallados:?}");
         assert!(hallados.contains(&c.join(manifest::PROJECT_FILE)));
+    }
+
+    #[test]
+    fn la_carga_de_un_paquete_congelado_no_se_cuenta_como_proyecto() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = Repository::create(dir.path().join("stave")).unwrap();
+        let proyecto = repo.domain("20_PROJECTS").join("1_ACTIVE/2026-08-06_A_ORIG");
+        fs::create_dir_all(&proyecto).unwrap();
+        fs::write(proyecto.join(manifest::PROJECT_FILE), b"uid: PROYECTO\n").unwrap();
+
+        // Copia congelada de un paquete emitido, con el manifiesto en su carga
+        // (apartado 32.1). No es un proyecto del repositorio.
+        let paquete = proyecto.join("08_DELIVERY/STAVE-XCHG_2026-08-06_A_B_0007");
+        fs::create_dir_all(paquete.join("data/content")).unwrap();
+        fs::write(paquete.join("bagit.txt"), b"BagIt-Version: 1.0\n").unwrap();
+        fs::write(
+            paquete.join("data/content").join(manifest::PROJECT_FILE),
+            b"uid: PROYECTO\n",
+        )
+        .unwrap();
+
+        let hallados = repo.discover_projects();
+        assert_eq!(hallados.len(), 1, "{hallados:?}");
+        assert_eq!(hallados[0], proyecto.join(manifest::PROJECT_FILE));
+    }
+
+    #[test]
+    fn un_paquete_recibido_en_la_cuarentena_tampoco_se_cuenta() {
+        let dir = tempfile::tempdir().unwrap();
+        let repo = Repository::create(dir.path().join("stave")).unwrap();
+        let paquete = repo.inbox().join("STAVE-XCHG_2026-08-06_A_B_0007");
+        fs::create_dir_all(paquete.join("data/content")).unwrap();
+        fs::write(paquete.join("bagit.txt"), b"BagIt-Version: 1.0\n").unwrap();
+        fs::write(
+            paquete.join("data/content").join(manifest::PROJECT_FILE),
+            b"uid: AJENO\n",
+        )
+        .unwrap();
+        assert!(repo.discover_projects().is_empty());
     }
 
     #[test]

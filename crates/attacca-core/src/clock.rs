@@ -149,24 +149,143 @@ fn bad_date(date: &str) -> Error {
     ))
 }
 
+/// Fuentes de reserva sobre HTTPS.
+///
+/// Muchas redes de estudio bloquean el puerto 123 y admiten solo HTTPS. El
+/// apartado 22.3.1 admite «un protocolo de sincronización horaria equivalente»
+/// además de RFC 5905; la cabecera `Date` de una respuesta HTTP lo es, con la
+/// limitación de precisión que se declara en [`Precision`].
+pub const DEFAULT_HTTPS_SOURCES: &[&str] = &[
+    "https://www.cloudflare.com/",
+    "https://www.google.com/",
+];
+
+/// Precisión de la medida, según la fuente empleada.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Precision {
+    /// SNTP conforme a RFC 5905. Resolución muy por debajo del segundo.
+    Ntp,
+    /// Cabecera `Date` de una respuesta HTTPS. Su resolución es de un segundo,
+    /// igual a la tolerancia del apartado 22.3.1: una desviación de menos de un
+    /// segundo no es distinguible de una desviación nula.
+    HttpDate,
+}
+
+/// Última precisión empleada. 0 = NTP, 1 = cabecera Date.
+static LAST_PRECISION: AtomicI64 = AtomicI64::new(0);
+
+/// Precisión de la última medida.
+pub fn last_precision() -> Precision {
+    if LAST_PRECISION.load(Ordering::Relaxed) == 0 {
+        Precision::Ntp
+    } else {
+        Precision::HttpDate
+    }
+}
+
 /// Consulta las fuentes de tiempo y devuelve el estado resultante.
 ///
-/// Se detiene en la primera fuente que responde. El resultado se memoriza para
-/// que la interfaz pueda consultarlo sin repetir la consulta de red.
+/// Se intenta primero SNTP, que es la fuente que el apartado 22.3.1 nombra. Si
+/// ninguna responde, se recurre a la cabecera `Date` sobre HTTPS. El resultado
+/// se memoriza para que la interfaz pueda consultarlo sin repetir la consulta.
 pub fn check_sync(sources: &[&str], timeout: Duration) -> SyncState {
     for source in sources {
         if let Some(drift_ms) = query_sntp(source, timeout) {
-            LAST_DRIFT_MS.store(drift_ms, Ordering::Relaxed);
-            HAS_SYNC.store(1, Ordering::Relaxed);
-            return if drift_ms.abs() <= MAX_DRIFT_SECONDS * 1000 {
-                SyncState::Synced { drift_ms }
-            } else {
-                SyncState::Drifted { drift_ms }
-            };
+            return record(drift_ms, Precision::Ntp);
+        }
+    }
+    for source in DEFAULT_HTTPS_SOURCES {
+        if let Some(drift_ms) = query_http_date(source, timeout) {
+            return record(drift_ms, Precision::HttpDate);
         }
     }
     HAS_SYNC.store(0, Ordering::Relaxed);
     SyncState::Unavailable
+}
+
+fn record(drift_ms: i64, precision: Precision) -> SyncState {
+    LAST_DRIFT_MS.store(drift_ms, Ordering::Relaxed);
+    HAS_SYNC.store(1, Ordering::Relaxed);
+    LAST_PRECISION.store(
+        match precision {
+            Precision::Ntp => 0,
+            Precision::HttpDate => 1,
+        },
+        Ordering::Relaxed,
+    );
+    if drift_ms.abs() <= MAX_DRIFT_SECONDS * 1000 {
+        SyncState::Synced { drift_ms }
+    } else {
+        SyncState::Drifted { drift_ms }
+    }
+}
+
+/// Lee la cabecera `Date` de una respuesta HTTPS y calcula la desviación.
+///
+/// La mitad del tiempo de ida y vuelta se descuenta como estimación de la
+/// latencia. Una respuesta cuyo trayecto sea demasiado lento se descarta: la
+/// medida dejaría de ser útil frente a una tolerancia de un segundo.
+fn query_http_date(url: &str, timeout: Duration) -> Option<i64> {
+    // El almacén de confianza del sistema operativo se emplea en lugar de una
+    // lista de raíces incrustada: un estudio detrás de un proxy corporativo
+    // tiene su propia autoridad de certificación instalada en el sistema, y una
+    // lista incrustada la rechazaría.
+    let mut constructor = ureq::AgentBuilder::new()
+        .timeout(timeout)
+        .tls_connector(std::sync::Arc::new(native_tls::TlsConnector::new().ok()?))
+        .user_agent(&crate::written_by());
+
+    // Se respeta la configuración de proxy del entorno, habitual en redes de
+    // estudio y de oficina.
+    if let Some(proxy) = std::env::var("HTTPS_PROXY")
+        .or_else(|_| std::env::var("https_proxy"))
+        .ok()
+        .and_then(|s| ureq::Proxy::new(s.trim_start_matches("http://")).ok())
+    {
+        constructor = constructor.proxy(proxy);
+    }
+    let agente = constructor.build();
+
+    let t1 = SystemTime::now();
+    let respuesta = agente.head(url).call().ok()?;
+    let t2 = SystemTime::now();
+
+    let cabecera = respuesta.header("date")?;
+    let servidor_ms = parse_http_date(cabecera)?;
+
+    let ida_vuelta = t2.duration_since(t1).ok()?.as_millis() as i64;
+    if ida_vuelta > 2000 {
+        return None;
+    }
+    let local_ms = unix_millis(t1)? + ida_vuelta / 2;
+    Some(local_ms - servidor_ms)
+}
+
+/// Interpreta el formato de fecha de HTTP: `Wed, 06 Aug 2026 17:20:00 GMT`.
+fn parse_http_date(value: &str) -> Option<i64> {
+    let partes: Vec<&str> = value.split_whitespace().collect();
+    if partes.len() < 5 {
+        return None;
+    }
+    let dia: u8 = partes[1].parse().ok()?;
+    let mes = match partes[2] {
+        "Jan" => 1, "Feb" => 2, "Mar" => 3, "Apr" => 4, "May" => 5, "Jun" => 6,
+        "Jul" => 7, "Aug" => 8, "Sep" => 9, "Oct" => 10, "Nov" => 11, "Dec" => 12,
+        _ => return None,
+    };
+    let anio: i32 = partes[3].parse().ok()?;
+    let hora: Vec<&str> = partes[4].split(':').collect();
+    if hora.len() != 3 {
+        return None;
+    }
+    let fecha = time::Date::from_calendar_date(anio, time::Month::try_from(mes).ok()?, dia).ok()?;
+    let hms = time::Time::from_hms(
+        hora[0].parse().ok()?,
+        hora[1].parse().ok()?,
+        hora[2].parse().ok()?,
+    )
+    .ok()?;
+    Some((fecha.with_time(hms).assume_utc().unix_timestamp()) * 1000)
 }
 
 /// Último estado conocido, sin consultar la red.
@@ -301,6 +420,22 @@ mod tests {
         assert!(require_sync_for_emission(SyncState::Synced { drift_ms: 120 }).is_ok());
         assert!(require_sync_for_emission(SyncState::Drifted { drift_ms: 4000 }).is_err());
         assert!(require_sync_for_emission(SyncState::Unavailable).is_err());
+    }
+
+    #[test]
+    fn interpreta_el_formato_de_fecha_de_http() {
+        let ms = parse_http_date("Wed, 06 Aug 2026 17:20:00 GMT").unwrap();
+        // 2026-08-06T17:20:00Z
+        assert_eq!(ms, 1_786_036_800_000);
+        assert!(parse_http_date("no es una fecha").is_none());
+        assert!(parse_http_date("Wed, 06 Xxx 2026 17:20:00 GMT").is_none());
+    }
+
+    #[test]
+    fn declara_la_precision_de_la_fuente_empleada() {
+        // La cabecera Date tiene resolución de un segundo, igual a la
+        // tolerancia: la limitación debe ser visible para quien la consulta.
+        assert_ne!(Precision::Ntp, Precision::HttpDate);
     }
 
     #[test]

@@ -100,10 +100,14 @@ pub fn create(repo: &Repository, actor: &str, spec: &NewProject) -> Result<Proje
         naming::deliverable_audio_name(&spec.artist, &spec.title, Some("Radio Edit"), "WAV-24-48", "wav")
     );
     if ruta_larga.chars().count() > naming::MAX_PATH_CHARS {
+        // La NOTA 1 del apartado 6.5 lo dice: cada carácter de la raíz se
+        // descuenta del presupuesto. Indicar cuánto consume la raíz permite
+        // decidir entre acortar el título y trasladar el repositorio.
+        let raiz_repo = repo.root().to_string_lossy().chars().count();
         return Err(Error::requirement(
             "9.1",
             format!(
-                "La ruta de entrega más larga de este proyecto mediría {} de {} caracteres. El proyecto no se ha creado. Acortar el título.",
+                "La ruta de entrega más larga de este proyecto mediría {} de {} caracteres, de los que {raiz_repo} corresponden a la raíz del repositorio. El proyecto no se ha creado. Acortar el título, o trasladar la raíz a una ruta más corta.",
                 ruta_larga.chars().count(),
                 naming::MAX_PATH_CHARS
             ),

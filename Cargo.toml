@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["crates/attacca-core"]
+members = ["crates/attacca-core", "crates/attacca-cli"]
 
 [workspace.package]
 version = "0.1.0"

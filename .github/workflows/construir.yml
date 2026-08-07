@@ -74,6 +74,13 @@ jobs:
             extension: exe
 
     runs-on: ${{ matrix.os }}
+
+    # `secrets` no esta disponible en la condicion de un paso, y el `env` del
+    # propio paso tampoco se ve a si mismo. La comprobacion se hace aqui, al
+    # nivel del trabajo, que si alcanza a las condiciones de los pasos.
+    env:
+      HAY_CERTIFICADO_APPLE: ${{ secrets.APPLE_CERTIFICATE != '' }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -129,12 +136,11 @@ jobs:
 
           ls -l artefactos
 
-      # La condicion mira `secrets`, no `env`: el bloque `env` de un paso no
-      # esta disponible en su propio `if`, de modo que comprobar
-      # env.APPLE_CERTIFICATE dejaba el paso sin ejecutar incluso habiendo
-      # certificado.
+      # La condicion mira la variable del trabajo. Comprobar
+      # env.APPLE_CERTIFICATE, definida en el propio paso, dejaba el paso sin
+      # ejecutar incluso habiendo certificado.
       - name: Preparar la firma de macOS
-        if: inputs.firmar && matrix.os == 'macos-14' && secrets.APPLE_CERTIFICATE != ''
+        if: inputs.firmar && matrix.os == 'macos-14' && env.HAY_CERTIFICADO_APPLE == 'true'
         env:
           APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
           APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}

@@ -1,0 +1,419 @@
+name: Construir
+
+# Flujo reutilizable que produce un artefacto por plataforma:
+#
+#   Windows   instalador .exe (NSIS)
+#   macOS     .dmg universal, con las dos arquitecturas en un solo binario
+#   Linux     .AppImage
+#
+# Lo invocan tanto la comprobacion de cada cambio como la publicacion de una
+# version, de modo que lo que se publica es exactamente lo que se comprobo.
+
+on:
+  workflow_call:
+    inputs:
+      firmar:
+        description: Aplicar la firma de codigo cuando haya credenciales
+        type: boolean
+        default: false
+    secrets:
+      TAURI_SIGNING_PRIVATE_KEY:
+        required: false
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD:
+        required: false
+      APPLE_CERTIFICATE:
+        required: false
+      APPLE_CERTIFICATE_PASSWORD:
+        required: false
+      APPLE_SIGNING_IDENTITY:
+        required: false
+      APPLE_ID:
+        required: false
+      APPLE_PASSWORD:
+        required: false
+      APPLE_TEAM_ID:
+        required: false
+      WINDOWS_CERTIFICATE:
+        required: false
+      WINDOWS_CERTIFICATE_PASSWORD:
+        required: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  construir:
+    name: ${{ matrix.nombre }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - nombre: Linux AppImage
+            os: ubuntu-22.04
+            objetivo: x86_64-unknown-linux-gnu
+            bundles: appimage
+            etiqueta: linux-x86_64
+            extension: AppImage
+
+          # Un solo .dmg para Apple Silicon e Intel. El objetivo universal
+          # exige las dos cadenas de compilacion instaladas.
+          - nombre: macOS universal
+            os: macos-14
+            objetivo: universal-apple-darwin
+            bundles: dmg
+            etiqueta: macos-universal
+            extension: dmg
+
+          # NSIS produce un instalador .exe. MSI queda fuera a proposito: el
+          # encargo pide .exe.
+          - nombre: Windows exe
+            os: windows-latest
+            objetivo: x86_64-pc-windows-msvc
+            bundles: nsis
+            etiqueta: windows-x86_64
+            extension: exe
+
+    runs-on: ${{ matrix.os }}
+    # Sin limite, un paso colgado retiene la maquina las seis horas que GitHub
+    # concede por defecto. Compilar y empaquetar las tres plataformas no ha
+    # pasado de diez minutos.
+    timeout-minutes: 45
+
+    # `secrets` no esta disponible en la condicion de un paso, y el `env` del
+    # propio paso tampoco se ve a si mismo. La comprobacion se hace aqui, al
+    # nivel del trabajo, que si alcanza a las condiciones de los pasos.
+    env:
+      HAY_CERTIFICADO_APPLE: ${{ secrets.APPLE_CERTIFICATE != '' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cadena de compilacion
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.objetivo == 'universal-apple-darwin' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.objetivo }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.etiqueta }}
+
+      - name: Dependencias de Linux
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev \
+            libayatana-appindicator3-dev build-essential curl wget file \
+            libfuse2 desktop-file-utils
+
+      # La linea de ordenes acompana al paquete: acredita que el material es
+      # utilizable sin la interfaz grafica (Anexo H).
+      # Se deja directamente en su nombre definitivo, en lugar de copiarla a la
+      # raiz del repositorio y recogerla dos pasos despues: el rodeo perdia el
+      # ejecutable en Windows, donde bash resuelve los nombres con y sin la
+      # extension .exe indistintamente.
+      - name: Linea de ordenes
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artefactos
+          destino="artefactos/attacca-${{ matrix.etiqueta }}"
+
+          if [ "${{ matrix.objetivo }}" = "universal-apple-darwin" ]; then
+            cargo build --release -p attacca-cli --target aarch64-apple-darwin
+            cargo build --release -p attacca-cli --target x86_64-apple-darwin
+            lipo -create -output "$destino" \
+              target/aarch64-apple-darwin/release/attacca \
+              target/x86_64-apple-darwin/release/attacca
+            lipo -info "$destino"
+          else
+            cargo build --release -p attacca-cli --target ${{ matrix.objetivo }}
+            origen="target/${{ matrix.objetivo }}/release/attacca"
+            if [ -f "$origen.exe" ]; then
+              # En Windows el ejecutable lleva extension, y el artefacto ha de
+              # conservarla para poder ejecutarse.
+              cp "$origen.exe" "$destino.exe"
+            else
+              cp "$origen" "$destino"
+            fi
+          fi
+
+          ls -l artefactos
+
+      # La condicion mira la variable del trabajo. Comprobar
+      # env.APPLE_CERTIFICATE, definida en el propio paso, dejaba el paso sin
+      # ejecutar incluso habiendo certificado.
+      - name: Preparar la firma de macOS
+        if: inputs.firmar && matrix.os == 'macos-14' && env.HAY_CERTIFICADO_APPLE == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          # El certificado vive en un llavero temporal que se descarta con la
+          # maquina; no queda en disco compartido.
+          KEYCHAIN="$RUNNER_TEMP/firma.keychain-db"
+          PASS=$(openssl rand -base64 24)
+          security create-keychain -p "$PASS" "$KEYCHAIN"
+          security set-keychain-settings -lut 900 "$KEYCHAIN"
+          security unlock-keychain -p "$PASS" "$KEYCHAIN"
+          echo -n "$APPLE_CERTIFICATE" | base64 --decode -o "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$KEYCHAIN" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -k "$PASS" "$KEYCHAIN"
+          security list-keychain -d user -s "$KEYCHAIN"
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+          # Las variables de firma se declaran aqui y solo aqui. Definidas y
+          # vacias no equivalen a no definidas: Tauri las lee como presentes,
+          # intenta firmar con una identidad vacia y el empaquetado termina en
+          # «The specified item could not be found in the keychain».
+          {
+            echo "APPLE_SIGNING_IDENTITY=${{ secrets.APPLE_SIGNING_IDENTITY }}"
+            echo "APPLE_ID=${{ secrets.APPLE_ID }}"
+            echo "APPLE_PASSWORD=${{ secrets.APPLE_PASSWORD }}"
+            echo "APPLE_TEAM_ID=${{ secrets.APPLE_TEAM_ID }}"
+          } >> "$GITHUB_ENV"
+
+      - name: Paquete de escritorio
+        uses: tauri-apps/tauri-action@v0
+        env:
+          # Sin estos secretos el paquete se produce sin firmar, y el flujo
+          # sigue adelante: un artefacto sin firmar es util para comprobar.
+          #
+          # Las variables APPLE_* no se declaran aqui a proposito. Las declara
+          # el paso anterior, y solo cuando hay certificado.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: app/src-tauri
+          # La actualizacion verificable solo se compila cuando hay clave de
+          # firma. Sin ella, el paquete se produce sin actualizador: uno que no
+          # verifica la firma seria peor que ninguno.
+          args: >-
+            --target ${{ matrix.objetivo }}
+            --bundles ${{ matrix.bundles }}
+            ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' && '--features actualizador --config tauri.actualizador.conf.json' || '' }}
+          includeUpdaterJson: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+
+      - name: Firma de Windows
+        if: inputs.firmar && matrix.os == 'windows-latest'
+        env:
+          CERT: ${{ secrets.WINDOWS_CERTIFICATE }}
+          CERT_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        shell: pwsh
+        run: |
+          if (-not $env:CERT) {
+            Write-Host "No hay certificado de firma. El instalador queda sin firmar."
+            exit 0
+          }
+          [IO.File]::WriteAllBytes("$env:RUNNER_TEMP\cert.pfx",
+            [Convert]::FromBase64String($env:CERT))
+          # Se firman tanto el instalador como la linea de ordenes, y antes de
+          # calcular las sumas de verificacion: firmar despues las invalidaria.
+          Get-ChildItem -Recurse -Filter *.exe `
+            target/${{ matrix.objetivo }}/release/bundle, artefactos | ForEach-Object {
+              & signtool sign /f "$env:RUNNER_TEMP\cert.pfx" /p $env:CERT_PASSWORD `
+                /tr http://timestamp.digicert.com /td sha256 /fd sha256 $_.FullName
+            }
+          Remove-Item "$env:RUNNER_TEMP\cert.pfx"
+
+      # Se reune todo en una carpeta con nombres estables, para que la
+      # publicacion no dependa de la ruta interna de cada empaquetador.
+      - name: Reunir los artefactos
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p artefactos
+
+          # Cada empaquetador deja su salida en su propia carpeta; buscar por
+          # extension a secas podria recoger un ejecutable intermedio.
+          encontrado=$(find target -type f \
+            -path "*bundle/${{ matrix.bundles }}/*" \
+            -name "*.${{ matrix.extension }}" | head -1)
+          if [ -z "$encontrado" ]; then
+            echo "No se produjo ningun archivo .${{ matrix.extension }}."
+            echo "Contenido de bundle:"
+            find target -path "*bundle*" -type f | head -40
+            exit 1
+          fi
+          cp "$encontrado" "artefactos/Attacca-${{ matrix.etiqueta }}.${{ matrix.extension }}"
+
+          # Manifiesto del actualizador y firmas, si se produjeron. Con -exec en
+          # lugar de recorrer la salida de find: un nombre con espacios partiria
+          # el bucle.
+          find target -path "*bundle*" -name "latest.json" \
+            -exec cp {} artefactos/ \;
+          find target -path "*bundle*" -name "*.sig" \
+            -exec cp {} artefactos/ \;
+
+          # La linea de ordenes ya se dejo en `artefactos` al compilarla. Se
+          # comprueba que sigue ahi antes de firmar las sumas: un paquete sin
+          # ella no acredita que el material sea utilizable sin interfaz.
+          if ! ls artefactos/attacca-${{ matrix.etiqueta }}* > /dev/null 2>&1; then
+            echo "No esta la linea de ordenes en artefactos."
+            ls -la artefactos
+            exit 1
+          fi
+
+          # Suma de verificacion de cada artefacto, del mismo modo que un
+          # manifiesto de integridad: permite comprobar la descarga sin
+          # confiar en el canal.
+          cd artefactos
+          for f in *; do
+            case "$f" in *.sha256) continue;; esac
+            if command -v sha256sum > /dev/null; then
+              sha256sum "$f" > "$f.sha256"
+            else
+              shasum -a 256 "$f" > "$f.sha256"
+            fi
+          done
+          ls -la
+
+      # Las dos arquitecturas se comprueban sobre los dos binarios universales
+      # que se producen: el de la aplicacion, que Tauri copia dentro del .app y
+      # este dentro del .dmg, y el de la linea de ordenes.
+      #
+      # Montar el .dmg y mirar dentro seria mas directo, y fue lo primero que se
+      # intento, pero hdiutil falla de forma intermitente en las maquinas de
+      # macOS por contencion de recursos. Una comprobacion obligatoria no puede
+      # descansar sobre una orden que falla sola.
+      - name: Comprobar que el paquete de macOS es universal
+        if: matrix.os == 'macos-14'
+        run: |
+          set -euo pipefail
+
+          comprobar_universal() {
+            local ruta="$1" etiqueta="$2" info
+            info=$(lipo -info "$ruta")
+            echo "$etiqueta: $info"
+            case "$info" in
+              *x86_64*) ;;
+              *) echo "$etiqueta no incluye x86_64."; return 1;;
+            esac
+            case "$info" in
+              *arm64*) ;;
+              *) echo "$etiqueta no incluye arm64."; return 1;;
+            esac
+          }
+
+          # La linea de ordenes se publica tambien para las dos arquitecturas.
+          comprobar_universal "artefactos/attacca-macos-universal" "Linea de ordenes"
+
+          # Y el binario de la aplicacion, que es el que Tauri copia dentro del
+          # .app y este dentro del .dmg. El nombre es el del paquete de cargo,
+          # que esta en este repositorio; no se deduce del nombre del producto.
+          aplicacion="target/universal-apple-darwin/release/attacca-app"
+          if [ ! -f "$aplicacion" ]; then
+            echo "No esta el binario universal de la aplicacion en $aplicacion."
+            find target/universal-apple-darwin/release -maxdepth 1 -type f | head -20
+            exit 1
+          fi
+          comprobar_universal "$aplicacion" "Aplicacion"
+
+      # Un AppImage que no arranca no es un artefacto. Se comprueba que se
+      # ejecuta bajo una pantalla virtual.
+      - name: Comprobar que el AppImage arranca
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y xvfb
+          chmod +x artefactos/Attacca-linux-x86_64.AppImage
+          export WEBKIT_DISABLE_COMPOSITING_MODE=1 WEBKIT_DISABLE_DMABUF_RENDERER=1
+          timeout 25 xvfb-run -a --server-args="-screen 0 1280x820x24" \
+            ./artefactos/Attacca-linux-x86_64.AppImage --appimage-extract-and-run \
+            > /tmp/appimage.log 2>&1 || codigo=$?
+          # 124 es el codigo de `timeout`: la aplicacion seguia viva, que es lo
+          # que se queria comprobar.
+          if [ "${codigo:-0}" != "124" ] && [ "${codigo:-0}" != "0" ]; then
+            echo "El AppImage termino con codigo ${codigo}."
+            cat /tmp/appimage.log
+            exit 1
+          fi
+          echo "El AppImage arranco y se mantuvo en ejecucion."
+
+      # En Windows la comprobacion se hace con PowerShell. Lanzar el ejecutable
+      # nativo desde el bash de MSYS dejaba el paso esperando indefinidamente:
+      # el proceso hijo no se daba por terminado, con tuberia o sin ella, y con
+      # limite de tiempo solo se convertia en un 124 sin salida alguna.
+      - name: Comprobar que la linea de ordenes del artefacto responde (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $bin = Get-ChildItem artefactos -Filter "attacca-${{ matrix.etiqueta }}*" |
+            Where-Object { $_.Extension -ne ".sha256" } |
+            Select-Object -First 1
+          if (-not $bin) {
+            Write-Host "No esta la linea de ordenes en artefactos."
+            Get-ChildItem artefactos
+            exit 1
+          }
+          Write-Host "Ejecutando $($bin.Name), $($bin.Length) bytes"
+
+          # Start-Process con -Wait espera al proceso y expone su codigo de
+          # salida. El operador de llamada dejaba $LASTEXITCODE sin asignar, de
+          # modo que no habia forma de saber si el programa habia terminado ni
+          # con que resultado.
+          $salida = Join-Path $env:RUNNER_TEMP "conformidad.txt"
+          $errores = Join-Path $env:RUNNER_TEMP "conformidad.err.txt"
+          $proceso = Start-Process -FilePath $bin.FullName `
+            -ArgumentList "conformidad" -Wait -PassThru -NoNewWindow `
+            -RedirectStandardOutput $salida -RedirectStandardError $errores
+
+          if ($proceso.ExitCode -ne 0) {
+            Write-Host "La linea de ordenes termino con codigo $($proceso.ExitCode)."
+            Write-Host "--- salida de error ---"
+            if (Test-Path $errores) { Get-Content $errores -TotalCount 20 }
+            exit 1
+          }
+          if (-not (Test-Path $salida) -or (Get-Item $salida).Length -eq 0) {
+            Write-Host "La linea de ordenes termino sin emitir nada."
+            if (Test-Path $errores) { Get-Content $errores -TotalCount 20 }
+            exit 1
+          }
+          Get-Content $salida -TotalCount 6
+
+      - name: Comprobar que la linea de ordenes del artefacto responde
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Con un glob en lugar de `ls | grep`: la suma de verificacion se
+          # descarta por su extension, no por una coincidencia de texto.
+          bin=""
+          for f in artefactos/attacca-${{ matrix.etiqueta }}*; do
+            # Un patron que no casa con nada se expande a si mismo.
+            [ -e "$f" ] || continue
+            case "$f" in *.sha256) continue;; esac
+            bin="$f"
+            break
+          done
+          if [ -z "$bin" ]; then
+            echo "No esta la linea de ordenes en artefactos."
+            ls -la artefactos
+            exit 1
+          fi
+          chmod +x "$bin" 2>/dev/null || true
+
+          # La salida va a un archivo y no a una tuberia. Encadenar `| head` dejo
+          # el paso colgado en Windows: un ejecutable nativo escribiendo en una
+          # tuberia de MSYS cuyo lector ya ha terminado se queda esperando.
+          # El limite de tiempo convierte un cuelgue en un fallo con mensaje.
+          salida=$(mktemp)
+          if command -v timeout > /dev/null 2>&1; then
+            timeout 60 "$bin" conformidad > "$salida" 2>&1 || codigo=$?
+          else
+            "$bin" conformidad > "$salida" 2>&1 || codigo=$?
+          fi
+          if [ "${codigo:-0}" != "0" ]; then
+            echo "La linea de ordenes termino con codigo ${codigo:-0}."
+            head -20 "$salida"
+            exit 1
+          fi
+          head -6 "$salida"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: attacca-${{ matrix.etiqueta }}
+          path: artefactos/*
+          if-no-files-found: error
+          retention-days: 30

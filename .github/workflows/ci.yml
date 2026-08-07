@@ -1,0 +1,86 @@
+name: Comprobacion
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+# Un empujon nuevo deja sin objeto la comprobacion del anterior. Cancelarla
+# libera las maquinas y evita que una ejecucion obsoleta —o colgada— siga
+# ocupandolas.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  nucleo:
+    name: Nucleo y linea de ordenes
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-22.04, macos-14, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      # El nucleo y la linea de ordenes no dependen de la plataforma grafica:
+      # se comprueban en los tres sistemas sin instalar nada mas.
+      - name: Formato
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy -p attacca-core -p attacca-cli --all-targets -- -D warnings
+
+      - name: Pruebas
+        run: cargo test -p attacca-core -p attacca-cli
+
+      # El apartado 42 exige que el material sea utilizable sin la aplicacion.
+      # Esto lo comprueba con las utilidades del sistema, no con Attacca.
+      - name: Contenedor extraible sin la aplicacion
+        if: matrix.os != 'windows-latest'
+        shell: bash
+        run: bash scripts/comprobar-interoperabilidad.sh
+
+      # El apartado 7 del encargo exige que las reglas de redaccion se puedan
+      # auditar sin recorrer el codigo. Todo el texto visible esta en un archivo.
+      - name: Reglas de redaccion de la interfaz
+        if: matrix.os == 'ubuntu-22.04'
+        run: python3 scripts/auditar-redaccion.py
+
+      # Un flujo mal escrito no falla: no llega a ejecutarse, y la publicacion
+      # se descubre rota el dia de la version. `release.yml` solo corre al
+      # etiquetar, de modo que esta es la unica comprobacion que recibe.
+      - name: Flujos de trabajo
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          set -euo pipefail
+          version=1.7.7
+          curl -sSL -o actionlint.tar.gz \
+            "https://github.com/rhysd/actionlint/releases/download/v${version}/actionlint_${version}_linux_amd64.tar.gz"
+          tar xzf actionlint.tar.gz actionlint
+          ./actionlint
+
+      # El arranque en frio debe estar por debajo de dos segundos con
+      # quinientos proyectos indexados.
+      - name: Presupuesto de arranque en frio
+        run: cargo test -p attacca-core --release arranque_en_frio -- --nocapture
+
+  # Los tres artefactos se producen en cada cambio, no solo al publicar: un
+  # paquete que solo se construye el dia de la version es un paquete sin probar.
+  paquetes:
+    name: Paquetes
+    needs: nucleo
+    uses: ./.github/workflows/construir.yml
+    with:
+      firmar: false

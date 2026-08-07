@@ -1,0 +1,9 @@
+/target
+**/target
+node_modules/
+dist/
+*.stave
+.attacca-index
+
+# Salida de los empaquetadores
+/target/release/bundle/

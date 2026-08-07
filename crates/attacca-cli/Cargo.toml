@@ -1,0 +1,17 @@
+[package]
+name = "attacca-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Línea de órdenes de Attacca. Opera un repositorio STAVE 2.0 sin interfaz gráfica."
+
+[[bin]]
+name = "attacca"
+path = "src/main.rs"
+
+[dependencies]
+attacca-core = { workspace = true }
+clap = { workspace = true }
+serde_json = { workspace = true }

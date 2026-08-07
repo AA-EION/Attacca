@@ -1,0 +1,16 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "bundle": {
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "dialog": true,
+      "pubkey": "REEMPLAZAR_POR_LA_CLAVE_PUBLICA_DEL_PUBLICADOR",
+      "endpoints": [
+        "https://github.com/AA-EION/Attacca/releases/latest/download/latest.json"
+      ]
+    }
+  }
+}

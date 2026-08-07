@@ -14,6 +14,162 @@ use crate::repo::Repository;
 use serde_json::json;
 use std::path::Path;
 
+/// Registra la recepción del acuse que completa la cesión (apartado 41.2,
+/// paso 9 de la Tabla 33).
+///
+/// Un envío no se considera completado hasta que la parte emisora recibe el
+/// acuse (apartado 31.2). Hasta ese momento el estado es `en_transito` y
+/// ninguna de las dos partes debe modificar el proyecto. Con el acuse en la
+/// mano, el estado del cedente pasa a `cedida`.
+///
+/// Cuando el acuse rechaza la custodia, o resulta en rechazo del envío, la
+/// custodia revierte al cedente mediante un asiento `custody_reclaimed`
+/// (apartado 41.2, penúltimo párrafo).
+pub fn record_receipt(
+    repo: &Repository,
+    actor: &str,
+    project: &mut ProjectManifest,
+    receipt: &crate::manifest::receipt::Receipt,
+    org: &str,
+) -> Result<CustodyState> {
+    use crate::manifest::receipt::ReceiptResult;
+
+    let estado = project.custody_state();
+    if estado != CustodyState::InTransit {
+        return Err(Error::Custody {
+            state: estado.as_str().to_string(),
+            detail: "No se ha registrado nada. Solo procede registrar el acuse de un proyecto en tránsito.".into(),
+        });
+    }
+
+    let envio = receipt.shipment_id().map(str::to_string);
+    let esperado = project
+        .doc()
+        .at("custody.transfer.shipment_id")
+        .and_then(|n| n.present_str())
+        .map(str::to_string);
+    if envio.is_some() && esperado.is_some() && envio != esperado {
+        return Err(Error::requirement(
+            "32.2",
+            format!(
+                "El acuse corresponde al envío {} y la cesión se emitió con el envío {}. No se ha registrado nada. El identificador de envío es la clave que vincula ambos registros.",
+                envio.unwrap_or_default(),
+                esperado.unwrap_or_default()
+            ),
+        ));
+    }
+
+    // Un acuse que acepta el material pero no la custodia es una aceptación con
+    // reservas, y la custodia revierte al cedente (apartado 41.2).
+    let acepta_custodia = receipt.custody_accepted().unwrap_or(false);
+    let rechazado = receipt.result() == Some(ReceiptResult::Rejected);
+    let cede = acepta_custodia && !rechazado;
+
+    let ahora = clock::now_rfc3339();
+    let seq = project.next_custody_seq();
+    let accion = if cede {
+        CustodyAction::CustodyTransferred
+    } else {
+        CustodyAction::CustodyReclaimed
+    };
+    project
+        .doc_mut()
+        .ensure_map("custody")
+        .ensure_seq("history")
+        .push(
+            ChronologyEntry {
+                seq,
+                action: accion,
+                ts: receipt
+                    .doc()
+                    .at("receipt.issued")
+                    .and_then(|n| n.present_str())
+                    .unwrap_or(&ahora)
+                    .to_string(),
+                actor: actor.to_string(),
+                org: org.to_string(),
+                shipment_id: envio.clone(),
+            }
+            .to_node(),
+        );
+
+    let resultante = if cede {
+        CustodyState::Ceded
+    } else {
+        CustodyState::Reclaimed
+    };
+    {
+        let cust = project.doc_mut().ensure_map("custody");
+        cust.set("state", Node::str(resultante.as_str()));
+        cust.set("since", Node::str(&ahora));
+        if !cede {
+            cust.remove("transfer");
+        }
+    }
+    project.save()?;
+
+    if cede {
+        // La copia local sigue bloqueada: la custodia es ahora de la otra parte.
+        custody_lock::write_marker(
+            project.root(),
+            &crate::manifest::custody_lock::CustodyLock {
+                state: CustodyState::Ceded,
+                holder: format!(
+                    "{} / {}",
+                    receipt.doc().at("recipient.org").and_then(|n| n.present_str()).unwrap_or("desconocida"),
+                    receipt.doc().at("recipient.officer").and_then(|n| n.present_str()).unwrap_or("")
+                ),
+                ceded_by: format!("{org} / {actor}"),
+                shipment_id: envio.clone().unwrap_or_default(),
+                ceded_at: ahora.clone(),
+                expected_return: receipt
+                    .doc()
+                    .at("custody.expected_return")
+                    .and_then(|n| n.present_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                grace_days: project
+                    .doc()
+                    .at("custody.transfer.grace_days")
+                    .and_then(|n| n.as_int())
+                    .unwrap_or(0),
+            },
+        )?;
+    } else {
+        // La custodia revierte: se restituye la escritura y se suprime el
+        // marcador.
+        fsx::readonly::set_tree_readonly(project.root(), false, &[])?;
+        custody_lock::remove_marker(project.root())?;
+        Register::at(repo.root()).open(
+            repo,
+            actor,
+            Origin::ShipmentReception,
+            Severity::Major,
+            &[project.uid().unwrap_or_default().to_string()],
+            &format!(
+                "El acuse del envio {} no acepto la custodia. La custodia revirtio al cedente conforme al apartado 41.2.",
+                envio.clone().unwrap_or_default()
+            ),
+        )?;
+    }
+
+    let log = repo.event_log();
+    log.append(
+        actor,
+        event::RECEIPT_RECEIVED,
+        project.uid(),
+        json!({"shipment_id": envio, "result": receipt.result().map(|r| r.as_str())}),
+    )?;
+    log.append(
+        actor,
+        if cede { event::CUSTODY_TRANSFERRED } else { event::CUSTODY_RECLAIMED },
+        project.uid(),
+        json!({"shipment_id": envio}),
+    )?;
+
+    Ok(resultante)
+}
+
 /// Reclama por escrito el retorno de una cesión vencida (apartado 41.4).
 ///
 /// La reclamación precede a la recuperación forzosa: vencida la fecha esperada

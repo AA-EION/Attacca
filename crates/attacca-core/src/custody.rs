@@ -231,24 +231,59 @@ pub fn check_chronology(entries: &[ChronologyEntry]) -> ChronologyCheck {
 }
 
 /// Fusiona los asientos recibidos de otra parte con los propios
-/// (apartado 41.3, paso 2).
+/// (apartados 14.3.4 y 41.3, paso 2).
 ///
-/// Los asientos existentes no se modifican ni se suprimen. Los recibidos que ya
-/// constan —mismo número de secuencia y mismo acto— no se duplican.
+/// Los asientos propios no se modifican ni se suprimen, y ninguno de los
+/// recibidos se descarta. Los que ya constan —mismo acto, mismo instante y
+/// misma organización— no se duplican.
+///
+/// # Numeración independiente
+///
+/// Mientras un envío está en tránsito, ambas partes generan asientos sin
+/// conocer los de la otra: el cedente registra `custody_transferred` al recibir
+/// el acuse, y el cesionario ha registrado ya `received`, `imported` y
+/// `custody_assumed`. Ambas series parten del mismo punto y colisionan.
+///
+/// El apartado 14.3.4 exige tres cosas a la vez: que los números sean
+/// consecutivos, que ninguno se duplique y que al recibir un retorno se
+/// incorporen los asientos de la otra parte «conservando su orden y sin
+/// suprimir ninguno». Con numeración independiente, las tres solo pueden
+/// satisfacerse renumerando una de las series. Se renumeran los asientos
+/// recibidos, nunca los propios, y se conserva su orden relativo: es la lectura
+/// que preserva el requisito de no suprimir ni reordenar, y la única que
+/// produce una cronología sin duplicados.
 pub fn merge_chronology(
     own: &[ChronologyEntry],
     incoming: &[ChronologyEntry],
 ) -> Vec<ChronologyEntry> {
     let mut out = own.to_vec();
+    out.sort_by_key(|e| e.seq);
+
+    // Un asiento recibido que ya consta no se duplica. La identidad de un
+    // asiento la dan el acto, el instante y la organización que lo generó; el
+    // número de secuencia no, porque es precisamente lo que puede diferir.
+    let mut pendientes: Vec<ChronologyEntry> = Vec::new();
     for entry in incoming {
         let ya_consta = out
             .iter()
-            .any(|e| e.seq == entry.seq && e.action == entry.action && e.ts == entry.ts);
-        if !ya_consta {
-            out.push(entry.clone());
+            .any(|e| e.action == entry.action && e.ts == entry.ts && e.org == entry.org);
+        let repetido_en_lote = pendientes
+            .iter()
+            .any(|e: &ChronologyEntry| e.action == entry.action && e.ts == entry.ts && e.org == entry.org);
+        if !ya_consta && !repetido_en_lote {
+            pendientes.push(entry.clone());
         }
     }
-    out.sort_by_key(|e| e.seq);
+
+    // Los recibidos conservan su orden relativo y se numeran a continuación de
+    // los propios.
+    pendientes.sort_by_key(|e| e.seq);
+    let mut siguiente = out.iter().map(|e| e.seq).max().unwrap_or(0) + 1;
+    for mut entry in pendientes {
+        entry.seq = siguiente;
+        siguiente += 1;
+        out.push(entry);
+    }
     out
 }
 
@@ -395,9 +430,55 @@ mod tests {
             asiento(4, CustodyAction::Imported, "2026-08-06T11:30:00-05:00"),
         ];
         let fusion = merge_chronology(&propios, &recibidos);
+        // El asiento `sent` ya constaba y no se duplica.
         assert_eq!(fusion.len(), 4);
         assert_eq!(fusion.iter().map(|e| e.seq).collect::<Vec<_>>(), vec![1, 2, 3, 4]);
         assert!(check_chronology(&fusion).is_clean());
+    }
+
+    #[test]
+    fn la_fusion_resuelve_la_numeracion_independiente_de_ambas_partes() {
+        // Ambas partes numeraron a partir del mismo punto mientras el envío
+        // estaba en tránsito: el cedente registró `custody_transferred` con el
+        // 3, y el cesionario `received` también con el 3.
+        let mut propio_transferido =
+            asiento(3, CustodyAction::CustodyTransferred, "2026-08-06T12:00:00-05:00");
+        propio_transferido.org = "Estudio A".into();
+        let propios = vec![
+            asiento(1, CustodyAction::Exported, "2026-08-06T10:00:00-05:00"),
+            asiento(2, CustodyAction::Sent, "2026-08-06T10:05:00-05:00"),
+            propio_transferido,
+        ];
+
+        let recibidos: Vec<ChronologyEntry> = [
+            (3, CustodyAction::Received, "2026-08-06T11:00:00-05:00"),
+            (4, CustodyAction::Imported, "2026-08-06T11:30:00-05:00"),
+            (5, CustodyAction::CustodyAssumed, "2026-08-06T11:40:00-05:00"),
+        ]
+        .iter()
+        .map(|(seq, accion, ts)| {
+            let mut e = asiento(*seq, *accion, ts);
+            e.org = "Estudio B".into();
+            e
+        })
+        .collect();
+
+        let fusion = merge_chronology(&propios, &recibidos);
+
+        // Ningún asiento se suprime.
+        assert_eq!(fusion.len(), 6);
+        // La secuencia es consecutiva y sin duplicados.
+        assert_eq!(fusion.iter().map(|e| e.seq).collect::<Vec<_>>(), vec![1, 2, 3, 4, 5, 6]);
+        assert!(check_chronology(&fusion).is_blocking() == false);
+        assert!(check_chronology(&fusion).duplicate_seq.is_empty());
+        assert!(check_chronology(&fusion).missing_seq.is_empty());
+        // Los asientos propios conservan su número.
+        assert_eq!(fusion[2].action, CustodyAction::CustodyTransferred);
+        assert_eq!(fusion[2].seq, 3);
+        // Los recibidos conservan su orden relativo.
+        assert_eq!(fusion[3].action, CustodyAction::Received);
+        assert_eq!(fusion[4].action, CustodyAction::Imported);
+        assert_eq!(fusion[5].action, CustodyAction::CustodyAssumed);
     }
 
     #[test]

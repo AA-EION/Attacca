@@ -301,8 +301,20 @@ pub fn reconcile(active_root: &Path, reconnected_root: &Path) -> Result<Reconcil
     let activa = crate::integrity::compute(active_root)?;
     let reconectada = crate::integrity::compute(reconnected_root)?;
 
+    // Los marcadores de estado describen la situación de cada réplica, no su
+    // material: `REPLICA.hold` existe por definición en la que no es activa y
+    // no en la activa. Compararlos produciría divergencia en toda
+    // reconciliación.
+    const MARCADORES: &[&str] = &[
+        crate::manifest::REPLICA_HOLD_FILE,
+        crate::manifest::CUSTODY_LOCK_FILE,
+    ];
+
     let mut cambiados = Vec::new();
     for (path, digest) in reconectada.entries() {
+        if MARCADORES.contains(&path) {
+            continue;
+        }
         match activa.digest_of(path) {
             // Un archivo presente en ambas con resumen distinto es un cambio no
             // presente en la activa.

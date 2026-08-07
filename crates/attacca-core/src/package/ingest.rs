@@ -68,6 +68,15 @@ impl Verification {
     pub fn accepted(&self) -> bool {
         self.result.allows_ingest()
     }
+
+    /// Las catorce verificaciones con su resultado, para presentarlas.
+    pub fn checks_as_pairs(&self) -> Vec<(&'static str, &'static str)> {
+        self.checks
+            .as_pairs()
+            .iter()
+            .map(|(nombre, resultado)| (*nombre, resultado.as_str()))
+            .collect()
+    }
 }
 
 /// Ejecuta las catorce verificaciones de la Tabla 31, en el orden indicado.

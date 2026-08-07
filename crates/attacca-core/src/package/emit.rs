@@ -217,7 +217,10 @@ pub fn emit(
 
     // Pasos 4 y 5: seleccionar el contenido, aplicar la minimización y
     // constituir el paquete.
-    let staging = repo.domain("09_TRANSFER_staging");
+    // El área de preparación vive dentro de `00_SYSTEM`, que es un dominio
+    // declarado (apartado 6.1). Crear una carpeta de primer nivel propia
+    // introduciría un sexto dominio ajeno a la norma.
+    let staging = repo.domain("00_SYSTEM").join("staging");
     std::fs::create_dir_all(&staging).map_err(|e| Error::io(&staging, e))?;
     let pkg = PackageDir::create(&staging, &package_name)?;
 

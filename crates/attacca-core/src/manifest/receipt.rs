@@ -167,7 +167,8 @@ impl VerificationSet {
         None
     }
 
-    fn as_pairs(&self) -> [(&'static str, Outcome); 14] {
+    /// Las catorce verificaciones con su resultado, en el orden de la Tabla 31.
+    pub fn as_pairs(&self) -> [(&'static str, Outcome); 14] {
         [
             ("provenance", self.provenance),
             ("authenticity", self.authenticity),

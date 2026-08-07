@@ -188,5 +188,51 @@ if [ "$FIRMAR" = 1 ]; then
   fi
 fi
 
+# --- 7. El .dmg -------------------------------------------------------------
+#
+# La aplicacion no se publica como carpeta .app suelta, y no es una cuestion de
+# gusto: al subirla como artefacto se comprime en un zip que no conserva el bit
+# de ejecucion, de modo que lo que se descarga no abre. Un .dmg es una imagen de
+# disco y conserva los permisos tal cual.
+#
+# Se firma antes y se empaqueta despues: al reves, la firma no cubriria nada.
+
+echo "==> Imagen de disco"
+DMG="$SALIDA/Attacca-macos-nativa.dmg"
+MONTAJE="$SALIDA/dmg"
+
+rm -rf "$MONTAJE" "$DMG"
+mkdir -p "$MONTAJE"
+cp -R "$PAQUETE" "$MONTAJE/"
+# El enlace a /Applications es lo que convierte la ventana en un "arrastrar
+# aqui" sin instrucciones.
+ln -s /Applications "$MONTAJE/Applications"
+
+# hdiutil falla de forma intermitente en las maquinas de macOS por contencion de
+# recursos. Tres intentos antes de darlo por perdido.
+creada=0
+for intento in 1 2 3; do
+  if hdiutil create -volname "Attacca" -srcfolder "$MONTAJE" \
+      -ov -format UDZO -quiet "$DMG"; then
+    creada=1
+    break
+  fi
+  echo "    hdiutil fallo en el intento $intento; se reintenta" >&2
+  sleep $((intento * 3))
+done
+rm -rf "$MONTAJE"
+
+if [ "$creada" != 1 ]; then
+  echo "No se pudo crear la imagen de disco." >&2
+  exit 1
+fi
+
+# Suma de verificacion, del mismo modo que un manifiesto de integridad: permite
+# comprobar la descarga sin confiar en el canal.
+( cd "$SALIDA" && shasum -a 256 "$(basename "$DMG")" > "$(basename "$DMG").sha256" )
+
+echo "    $(du -h "$DMG" | cut -f1) en $(basename "$DMG")"
+
 echo
-echo "Paquete en: $PAQUETE"
+echo "Paquete en:  $PAQUETE"
+echo "Imagen en:   $DMG"

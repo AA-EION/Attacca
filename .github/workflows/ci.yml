@@ -122,10 +122,15 @@ jobs:
       - name: Construir Attacca.app universal
         run: ./app/macos/construir.sh --pruebas
 
+      # Se sube el .dmg y no la carpeta .app: al subir una carpeta, el artefacto
+      # se comprime en un zip que no conserva el bit de ejecucion, y lo que se
+      # descarga no abre. La imagen de disco si conserva los permisos.
       - uses: actions/upload-artifact@v4
         with:
-          name: attacca-macos-nativa
-          path: app/macos/salida/Attacca.app
+          name: attacca-macos-nativa-dmg
+          path: |
+            app/macos/salida/Attacca-macos-nativa.dmg
+            app/macos/salida/Attacca-macos-nativa.dmg.sha256
           if-no-files-found: error
           retention-days: 14
 

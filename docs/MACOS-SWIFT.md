@@ -200,10 +200,18 @@ símbolo, se construye sin quejarse y falla al abrirlo.
 ## Cómo se compila
 
 ```
-./app/macos/construir.sh              # produce app/macos/salida/Attacca.app
+./app/macos/construir.sh              # Attacca.app y Attacca-macos-nativa.dmg
 ./app/macos/construir.sh --pruebas    # además ejecuta las pruebas del puente
 ./app/macos/construir.sh --firmar     # firma con APPLE_SIGNING_IDENTITY
 ```
+
+Deja las dos cosas en `app/macos/salida`: el `.app` para probar en el sitio y un
+`.dmg` con su suma de verificación para repartir.
+
+El `.dmg` no es un adorno. Una carpeta `.app` subida como artefacto se comprime
+en un zip que no conserva el bit de ejecución, y lo que se descarga no abre; una
+imagen de disco conserva los permisos. Por eso la comprobación sube el `.dmg` y
+no la carpeta.
 
 Requiere macOS. Con Xcode 26 o posterior se compila con Liquid Glass; con uno
 anterior el paquete se produce igual, con los materiales de siempre, y el guion

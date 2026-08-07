@@ -42,6 +42,12 @@ jobs:
         shell: bash
         run: bash scripts/comprobar-interoperabilidad.sh
 
+      # El apartado 7 del encargo exige que las reglas de redaccion se puedan
+      # auditar sin recorrer el codigo. Todo el texto visible esta en un archivo.
+      - name: Reglas de redaccion de la interfaz
+        if: matrix.os == 'ubuntu-22.04'
+        run: python3 scripts/auditar-redaccion.py
+
   aplicacion:
     name: Aplicacion de escritorio
     strategy:

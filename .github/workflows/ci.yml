@@ -9,6 +9,13 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# Un empujon nuevo deja sin objeto la comprobacion del anterior. Cancelarla
+# libera las maquinas y evita que una ejecucion obsoleta —o colgada— siga
+# ocupandolas.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   nucleo:
     name: Nucleo y linea de ordenes
@@ -17,6 +24,7 @@ jobs:
       matrix:
         os: [ubuntu-22.04, macos-14, windows-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 

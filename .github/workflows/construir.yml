@@ -74,6 +74,10 @@ jobs:
             extension: exe
 
     runs-on: ${{ matrix.os }}
+    # Sin limite, un paso colgado retiene la maquina las seis horas que GitHub
+    # concede por defecto. Compilar y empaquetar las tres plataformas no ha
+    # pasado de diez minutos.
+    timeout-minutes: 45
 
     # `secrets` no esta disponible en la condicion de un paso, y el `env` del
     # propio paso tampoco se ve a si mismo. La comprobacion se hace aqui, al
@@ -265,18 +269,56 @@ jobs:
           done
           ls -la
 
-      # El .dmg debe contener las dos arquitecturas. Se comprueba, no se supone.
+      # Las dos arquitecturas se comprueban sobre lo que se publica: el .dmg se
+      # monta y se examina el ejecutable que contiene. Antes se examinaba el
+      # .app del directorio de compilacion, que con `--bundles dmg` no se
+      # conserva, y se daba por hecho ademas que el ejecutable se llamaba como
+      # el producto, cuando lleva el nombre del paquete de cargo.
       - name: Comprobar que el paquete de macOS es universal
         if: matrix.os == 'macos-14'
         run: |
           set -euo pipefail
-          app=$(find target -name "Attacca.app" -type d | head -1)
-          binario="$app/Contents/MacOS/Attacca"
-          lipo -info "$binario"
-          lipo -info "$binario" | grep -q "x86_64" || {
-            echo "El paquete no incluye x86_64."; exit 1; }
-          lipo -info "$binario" | grep -q "arm64" || {
-            echo "El paquete no incluye arm64."; exit 1; }
+
+          comprobar_universal() {
+            local ruta="$1" etiqueta="$2" info
+            info=$(lipo -info "$ruta")
+            echo "$etiqueta: $info"
+            case "$info" in
+              *x86_64*) ;;
+              *) echo "$etiqueta no incluye x86_64."; return 1;;
+            esac
+            case "$info" in
+              *arm64*) ;;
+              *) echo "$etiqueta no incluye arm64."; return 1;;
+            esac
+          }
+
+          # La linea de ordenes se publica tambien para las dos arquitecturas.
+          comprobar_universal "artefactos/attacca-macos-universal" "Linea de ordenes"
+
+          punto=$(mktemp -d)
+          trap 'hdiutil detach "$punto" -quiet 2>/dev/null || true' EXIT
+          hdiutil attach "artefactos/Attacca-macos-universal.dmg" \
+            -mountpoint "$punto" -nobrowse -readonly -quiet
+
+          binario=""
+          for app in "$punto"/*.app; do
+            [ -d "$app" ] || continue
+            for f in "$app"/Contents/MacOS/*; do
+              [ -f "$f" ] || continue
+              binario="$f"
+              break
+            done
+            break
+          done
+
+          if [ -z "$binario" ]; then
+            echo "El .dmg no contiene ninguna aplicacion con ejecutable."
+            find "$punto" | head -40
+            exit 1
+          fi
+
+          comprobar_universal "$binario" "Aplicacion (${binario##*/})"
 
       # Un AppImage que no arranca no es un artefacto. Se comprueba que se
       # ejecuta bajo una pantalla virtual.
@@ -319,7 +361,23 @@ jobs:
             exit 1
           fi
           chmod +x "$bin" 2>/dev/null || true
-          "$bin" conformidad | head -6
+
+          # La salida va a un archivo y no a una tuberia. Encadenar `| head` dejo
+          # el paso colgado en Windows: un ejecutable nativo escribiendo en una
+          # tuberia de MSYS cuyo lector ya ha terminado se queda esperando.
+          # El limite de tiempo convierte un cuelgue en un fallo con mensaje.
+          salida=$(mktemp)
+          if command -v timeout > /dev/null 2>&1; then
+            timeout 60 "$bin" conformidad > "$salida" 2>&1 || codigo=$?
+          else
+            "$bin" conformidad > "$salida" 2>&1 || codigo=$?
+          fi
+          if [ "${codigo:-0}" != "0" ]; then
+            echo "La linea de ordenes termino con codigo ${codigo:-0}."
+            head -20 "$salida"
+            exit 1
+          fi
+          head -6 "$salida"
 
       - uses: actions/upload-artifact@v4
         with:

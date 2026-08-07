@@ -13,11 +13,17 @@ pub type Result<T> = std::result::Result<T, Error>;
 #[derive(Debug)]
 pub enum Error {
     /// Fallo de entrada y salida sobre una ruta concreta.
-    Io { path: PathBuf, source: std::io::Error },
+    Io {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     /// Un manifiesto no se pudo interpretar.
     Manifest { path: PathBuf, detail: String },
     /// Un requisito de la norma impide continuar.
-    Requirement { clause: &'static str, detail: String },
+    Requirement {
+        clause: &'static str,
+        detail: String,
+    },
     /// La entrada de la persona usuaria no es admisible.
     Input(String),
     /// Verificación de integridad fallida.
@@ -36,11 +42,17 @@ pub enum Error {
 
 impl Error {
     pub fn io(path: impl Into<PathBuf>, source: std::io::Error) -> Self {
-        Error::Io { path: path.into(), source }
+        Error::Io {
+            path: path.into(),
+            source,
+        }
     }
 
     pub fn requirement(clause: &'static str, detail: impl Into<String>) -> Self {
-        Error::Requirement { clause, detail: detail.into() }
+        Error::Requirement {
+            clause,
+            detail: detail.into(),
+        }
     }
 
     pub fn input(detail: impl Into<String>) -> Self {
@@ -126,6 +138,9 @@ impl std::error::Error for Error {
 
 impl From<crate::doc::ParseError> for Error {
     fn from(e: crate::doc::ParseError) -> Self {
-        Error::Manifest { path: PathBuf::new(), detail: e.0 }
+        Error::Manifest {
+            path: PathBuf::new(),
+            detail: e.0,
+        }
     }
 }

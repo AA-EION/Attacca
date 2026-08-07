@@ -152,7 +152,11 @@ impl Register {
     ) -> Result<NonConformity> {
         let hoy = clock::today();
         let nc = NonConformity {
-            id: format!("NC-{}-{}", hoy.replace('-', ""), &crate::ids::new_uid()[20..]),
+            id: format!(
+                "NC-{}-{}",
+                hoy.replace('-', ""),
+                &crate::ids::new_uid()[20..]
+            ),
             opened: clock::now_rfc3339(),
             origin,
             severity,
@@ -256,11 +260,18 @@ impl Register {
                 por_id.insert(nc.id.clone(), nc);
             }
         }
-        Ok(orden.into_iter().filter_map(|id| por_id.remove(&id)).collect())
+        Ok(orden
+            .into_iter()
+            .filter_map(|id| por_id.remove(&id))
+            .collect())
     }
 
     pub fn open_entries(&self) -> Result<Vec<NonConformity>> {
-        Ok(self.entries()?.into_iter().filter(|n| n.is_open()).collect())
+        Ok(self
+            .entries()?
+            .into_iter()
+            .filter(|n| n.is_open())
+            .collect())
     }
 }
 
@@ -301,7 +312,14 @@ mod tests {
     fn una_no_conformidad_mayor_no_se_cierra_sin_su_respuesta_exigible() {
         let (_d, repo, reg) = entorno();
         let nc = reg
-            .open(&repo, "a", Origin::Audit, Severity::Major, &[], "Hecho observado")
+            .open(
+                &repo,
+                "a",
+                Origin::Audit,
+                Severity::Major,
+                &[],
+                "Hecho observado",
+            )
             .unwrap();
 
         // Tabla 22: contención, causa raíz, acción correctiva y verificación de
@@ -312,7 +330,8 @@ mod tests {
 
         let mut completa = nc;
         completa.containment = Some("Envio retenido en cuarentena".into());
-        completa.root_cause = Some("El procedimiento no comprobaba el espacio antes de empaquetar".into());
+        completa.root_cause =
+            Some("El procedimiento no comprobaba el espacio antes de empaquetar".into());
         completa.corrective_action = Some("Comprobacion de espacio previa al empaquetado".into());
         completa.action_owner = Some("Responsable de intercambio".into());
         completa.effectiveness_check = Some("Diez envios sucesivos sin incidencia".into());
@@ -325,7 +344,14 @@ mod tests {
     fn una_no_conformidad_menor_se_cierra_con_correccion_y_registro() {
         let (_d, repo, reg) = entorno();
         let nc = reg
-            .open(&repo, "a", Origin::Spontaneous, Severity::Minor, &[], "Nombre con espacio")
+            .open(
+                &repo,
+                "a",
+                Origin::Spontaneous,
+                Severity::Minor,
+                &[],
+                "Nombre con espacio",
+            )
             .unwrap();
         assert!(nc.missing_response().is_empty());
         assert!(reg.close(&repo, "a", nc).is_ok());
@@ -335,7 +361,14 @@ mod tests {
     fn el_registro_es_de_solo_anexado_y_devuelve_la_ultima_version() {
         let (_d, repo, reg) = entorno();
         let mut nc = reg
-            .open(&repo, "a", Origin::Audit, Severity::Minor, &[], "Primera redaccion")
+            .open(
+                &repo,
+                "a",
+                Origin::Audit,
+                Severity::Minor,
+                &[],
+                "Primera redaccion",
+            )
             .unwrap();
         nc.containment = Some("Medida adoptada".into());
         reg.update(&nc).unwrap();
@@ -344,7 +377,11 @@ mod tests {
         assert_eq!(texto.lines().count(), 2, "las dos versiones constan");
 
         let entradas = reg.entries().unwrap();
-        assert_eq!(entradas.len(), 1, "se devuelve una sola entrada por identificador");
+        assert_eq!(
+            entradas.len(),
+            1,
+            "se devuelve una sola entrada por identificador"
+        );
         assert_eq!(entradas[0].containment.as_deref(), Some("Medida adoptada"));
     }
 
@@ -352,7 +389,14 @@ mod tests {
     fn la_apertura_y_el_cierre_dejan_su_entrada_en_el_registro_de_eventos() {
         let (_d, repo, reg) = entorno();
         let nc = reg
-            .open(&repo, "a", Origin::QualityControl, Severity::Minor, &["UID".into()], "Hecho")
+            .open(
+                &repo,
+                "a",
+                Origin::QualityControl,
+                Severity::Minor,
+                &["UID".into()],
+                "Hecho",
+            )
             .unwrap();
         reg.close(&repo, "a", nc).unwrap();
         let eventos: Vec<String> = repo

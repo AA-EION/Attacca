@@ -168,7 +168,9 @@ mod tests {
     fn una_operacion_concluida_no_queda_abierta() {
         let dir = tempfile::tempdir().unwrap();
         let j = Journal::at(dir.path());
-        let op = j.begin("emitir_paquete", Some("UID"), &[], json!({})).unwrap();
+        let op = j
+            .begin("emitir_paquete", Some("UID"), &[], json!({}))
+            .unwrap();
         assert_eq!(j.open_operations().unwrap().len(), 1);
         j.commit(&op.id).unwrap();
         assert!(j.open_operations().unwrap().is_empty());
@@ -202,7 +204,12 @@ mod tests {
         std::fs::write(&creado_file, b"truncado").unwrap();
 
         let op = j
-            .begin("derivar_proyecto", None, &[creado_dir.clone(), creado_file.clone()], json!({}))
+            .begin(
+                "derivar_proyecto",
+                None,
+                &[creado_dir.clone(), creado_file.clone()],
+                json!({}),
+            )
             .unwrap();
         let n = j.revert(&op).unwrap();
 
@@ -243,8 +250,12 @@ mod tests {
     fn el_diario_admite_varias_operaciones_simultaneas() {
         let dir = tempfile::tempdir().unwrap();
         let j = Journal::at(dir.path());
-        let a = j.begin("emitir_paquete", Some("U1"), &[], json!({})).unwrap();
-        let b = j.begin("conmutar_replica", Some("U2"), &[], json!({})).unwrap();
+        let a = j
+            .begin("emitir_paquete", Some("U1"), &[], json!({}))
+            .unwrap();
+        let b = j
+            .begin("conmutar_replica", Some("U2"), &[], json!({}))
+            .unwrap();
         assert_eq!(j.open_operations().unwrap().len(), 2);
         j.commit(&a.id).unwrap();
         let abiertas = j.open_operations().unwrap();

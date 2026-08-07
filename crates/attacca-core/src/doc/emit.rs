@@ -158,8 +158,24 @@ fn needs_quoting(s: &str) -> bool {
     let first = s.as_bytes()[0];
     if matches!(
         first,
-        b'-' | b'?' | b':' | b',' | b'[' | b']' | b'{' | b'}' | b'#' | b'&' | b'*' | b'!'
-            | b'|' | b'>' | b'\'' | b'"' | b'%' | b'@' | b'`'
+        b'-' | b'?'
+            | b':'
+            | b','
+            | b'['
+            | b']'
+            | b'{'
+            | b'}'
+            | b'#'
+            | b'&'
+            | b'*'
+            | b'!'
+            | b'|'
+            | b'>'
+            | b'\''
+            | b'"'
+            | b'%'
+            | b'@'
+            | b'`'
     ) {
         return true;
     }
@@ -168,8 +184,7 @@ fn needs_quoting(s: &str) -> bool {
     if s.contains(": ") || s.contains(" #") || s.ends_with(':') {
         return true;
     }
-    s.chars()
-        .any(|c| c.is_control() || c == '\n' || c == '\t')
+    s.chars().any(|c| c.is_control() || c == '\n' || c == '\t')
 }
 
 /// Reconoce `AAAA-MM-DD` y las marcas RFC 3339 que empiezan por esa forma.
@@ -217,7 +232,10 @@ mod tests {
         let doc = parse(fuente).unwrap();
         let primera = emit(&doc);
         let segunda = emit(&parse(&primera).unwrap());
-        assert_eq!(primera, segunda, "la reescritura debe ser byte a byte igual");
+        assert_eq!(
+            primera, segunda,
+            "la reescritura debe ser byte a byte igual"
+        );
         assert_eq!(primera, fuente);
     }
 
@@ -245,7 +263,10 @@ mod tests {
     #[test]
     fn conserva_el_decimal_de_las_mediciones() {
         let doc = parse("master:\n  true_peak_db: -1.0\n  lufs_i: -9.8\n").unwrap();
-        assert_eq!(emit(&doc), "master:\n  true_peak_db: -1.0\n  lufs_i: -9.8\n");
+        assert_eq!(
+            emit(&doc),
+            "master:\n  true_peak_db: -1.0\n  lufs_i: -9.8\n"
+        );
     }
 
     #[test]

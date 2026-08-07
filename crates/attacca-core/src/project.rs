@@ -97,7 +97,13 @@ pub fn create(repo: &Repository, actor: &str, spec: &NewProject) -> Result<Proje
     let ruta_larga = format!(
         "{}/08_DELIVERY/{date}_destinatario/Audio/{}",
         root.display(),
-        naming::deliverable_audio_name(&spec.artist, &spec.title, Some("Radio Edit"), "WAV-24-48", "wav")
+        naming::deliverable_audio_name(
+            &spec.artist,
+            &spec.title,
+            Some("Radio Edit"),
+            "WAV-24-48",
+            "wav"
+        )
     );
     if ruta_larga.chars().count() > naming::MAX_PATH_CHARS {
         // La NOTA 1 del apartado 6.5 lo dice: cada carácter de la raíz se
@@ -183,7 +189,11 @@ pub fn rename(
         .to_string();
     let kind = project.project_type().unwrap_or("ORIG").to_string();
     // La fecha del identificador es la de creación y no cambia al renombrar.
-    let fecha = anterior.split('_').next().unwrap_or(&clock::today()).to_string();
+    let fecha = anterior
+        .split('_')
+        .next()
+        .unwrap_or(&clock::today())
+        .to_string();
     let nuevo = naming::project_id(&fecha, new_title, &kind)?;
 
     if nuevo == anterior {
@@ -305,7 +315,8 @@ pub fn derive(
 
     // Apartado 14.4.2: se copia todo salvo el Anexo C y los paquetes ya
     // emitidos que residan en `08_DELIVERY` y `09_TRANSFER`.
-    let files_copied = fsx::copy_tree(&source_root, &derived_root, &["08_DELIVERY", "09_TRANSFER"])?;
+    let files_copied =
+        fsx::copy_tree(&source_root, &derived_root, &["08_DELIVERY", "09_TRANSFER"])?;
 
     let derived_uid = ids::new_uid();
     let ahora = clock::now_rfc3339();
@@ -521,7 +532,11 @@ pub fn create_session_folder(
 }
 
 /// Nombre sugerido para el archivo de sesión (apartado 7.4, último guion).
-pub fn suggested_session_name(project: &ProjectManifest, stage_suffix: &str, version: u32) -> String {
+pub fn suggested_session_name(
+    project: &ProjectManifest,
+    stage_suffix: &str,
+    version: u32,
+) -> String {
     let titulo = project
         .title()
         .map(naming::slugify)
@@ -715,7 +730,10 @@ mod tests {
         let m = create(&repo, "J. Duarte", &spec()).unwrap();
 
         assert!(crate::ids::is_uid(m.uid().unwrap()));
-        assert_eq!(m.id().unwrap(), format!("{}_Cancion-de-Ejemplo_ORIG", clock::today()));
+        assert_eq!(
+            m.id().unwrap(),
+            format!("{}_Cancion-de-Ejemplo_ORIG", clock::today())
+        );
         assert_eq!(m.artist(), Some("Artista"));
         assert_eq!(m.sample_rate(), Some(48000));
         assert_eq!(m.custody_state(), CustodyState::Own);
@@ -777,7 +795,14 @@ mod tests {
         // El valor anterior queda registrado con su marca temporal.
         let hist = m.doc().get("id_history").unwrap().as_seq().unwrap();
         assert_eq!(hist.len(), 1);
-        assert!(hist[0].as_map().unwrap().get("previous").unwrap().as_str().unwrap().contains("Cancion-de-Ejemplo"));
+        assert!(hist[0]
+            .as_map()
+            .unwrap()
+            .get("previous")
+            .unwrap()
+            .as_str()
+            .unwrap()
+            .contains("Cancion-de-Ejemplo"));
     }
 
     #[test]
@@ -796,7 +821,11 @@ mod tests {
         let mut origen = create(&repo, "a", &spec()).unwrap();
         std::fs::write(origen.root().join("00_ADMIN/notas.txt"), b"notas").unwrap();
         std::fs::create_dir_all(origen.root().join("08_DELIVERY/2026-08-06_Sello")).unwrap();
-        std::fs::write(origen.root().join("08_DELIVERY/2026-08-06_Sello/p.zip"), b"paquete").unwrap();
+        std::fs::write(
+            origen.root().join("08_DELIVERY/2026-08-06_Sello/p.zip"),
+            b"paquete",
+        )
+        .unwrap();
         let uid_origen = origen.uid().unwrap().to_string();
 
         let d = derive(&repo, "a", &mut origen, "Cambio de tonalidad", false).unwrap();
@@ -806,8 +835,14 @@ mod tests {
         assert!(d.derived_id.ends_with("_v02"), "{}", d.derived_id);
 
         let derivado = ProjectManifest::load(d.derived_root.join(PROJECT_FILE)).unwrap();
-        assert_eq!(derivado.doc().at("lineage.parent_uid").unwrap().as_str(), Some(uid_origen.as_str()));
-        assert_eq!(derivado.doc().at("lineage.reason").unwrap().as_str(), Some("Cambio de tonalidad"));
+        assert_eq!(
+            derivado.doc().at("lineage.parent_uid").unwrap().as_str(),
+            Some(uid_origen.as_str())
+        );
+        assert_eq!(
+            derivado.doc().at("lineage.reason").unwrap().as_str(),
+            Some("Cambio de tonalidad")
+        );
         // Copia íntegra salvo los paquetes ya emitidos.
         assert!(d.derived_root.join("00_ADMIN/notas.txt").is_file());
         assert!(!d.derived_root.join("08_DELIVERY").exists());
@@ -832,7 +867,10 @@ mod tests {
         assert!(!d.source_sealed);
         assert_ne!(origen.status(), Status::Sealed);
         // La circunstancia se declara de forma expresa (apartado 14.4.3).
-        assert_eq!(origen.doc().at("lineage.parallel").unwrap().as_bool(), Some(true));
+        assert_eq!(
+            origen.doc().at("lineage.parallel").unwrap().as_bool(),
+            Some(true)
+        );
     }
 
     #[test]
@@ -863,18 +901,38 @@ mod tests {
         // Desde fuera de la cuarentena: rechazado.
         let fuera = dir.path().join("suelto.wav");
         std::fs::write(&fuera, b"audio").unwrap();
-        let e = ingest_from_inbox(&repo, "a", &mut m, &fuera, "Cliente", "cleared", "INTERNO", None, None).unwrap_err();
+        let e = ingest_from_inbox(
+            &repo, "a", &mut m, &fuera, "Cliente", "cleared", "INTERNO", None, None,
+        )
+        .unwrap_err();
         assert_eq!(e.clause(), Some("6.1"));
 
         // Desde la cuarentena: aceptado, y 01_REF queda en solo lectura.
         let dentro = repo.inbox().join("referencia.wav");
         std::fs::write(&dentro, b"audio").unwrap();
-        let destino = ingest_from_inbox(&repo, "a", &mut m, &dentro, "Cliente", "cleared", "INTERNO", None, None).unwrap();
+        let destino = ingest_from_inbox(
+            &repo, "a", &mut m, &dentro, "Cliente", "cleared", "INTERNO", None, None,
+        )
+        .unwrap();
         assert!(destino.is_file());
-        assert!(std::fs::metadata(&destino).unwrap().permissions().readonly(), "01_REF en solo lectura");
+        assert!(
+            std::fs::metadata(&destino)
+                .unwrap()
+                .permissions()
+                .readonly(),
+            "01_REF en solo lectura"
+        );
         let fuentes = m.doc().get("sources").unwrap().as_seq().unwrap();
         assert_eq!(fuentes.len(), 1);
-        assert_eq!(fuentes[0].as_map().unwrap().get("clearance").unwrap().as_str(), Some("cleared"));
+        assert_eq!(
+            fuentes[0]
+                .as_map()
+                .unwrap()
+                .get("clearance")
+                .unwrap()
+                .as_str(),
+            Some("cleared")
+        );
     }
 
     #[test]
@@ -905,7 +963,9 @@ mod tests {
     fn un_proyecto_cedido_no_admite_ninguna_modificacion() {
         let (_d, repo) = repo();
         let mut m = create(&repo, "a", &spec()).unwrap();
-        m.doc_mut().ensure_map("custody").set("state", Node::str("cedida"));
+        m.doc_mut()
+            .ensure_map("custody")
+            .set("state", Node::str("cedida"));
         m.save().unwrap();
 
         assert!(rename(&repo, "a", &mut m, "Nuevo").is_err());

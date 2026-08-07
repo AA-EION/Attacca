@@ -102,7 +102,12 @@ pub fn link_project(
     // incorporar un proyecto ya publicado sin que este deje de pertenecer a su
     // release de origen.
     if let Some(actual) = project.release_uid() {
-        if actual != release_uid && !release.class().map(|c| c.references_without_duplicating()).unwrap_or(false) {
+        if actual != release_uid
+            && !release
+                .class()
+                .map(|c| c.references_without_duplicating())
+                .unwrap_or(false)
+        {
             return Err(Error::requirement(
                 "8.3",
                 format!("El proyecto ya pertenece al release {actual}. No se ha vinculado nada. Un proyecto no debe pertenecer a más de un release a la vez, salvo en una recopilación."),
@@ -262,7 +267,15 @@ mod tests {
     fn un_proyecto_no_pertenece_a_dos_releases_salvo_recopilacion() {
         let (_d, repo) = entorno();
         let mut a = create(&repo, "a", &nuevo_release(ReleaseClass::Ep)).unwrap();
-        let mut b = create(&repo, "a", &NewRelease { title: "Otro".into(), ..nuevo_release(ReleaseClass::Album) }).unwrap();
+        let mut b = create(
+            &repo,
+            "a",
+            &NewRelease {
+                title: "Otro".into(),
+                ..nuevo_release(ReleaseClass::Album)
+            },
+        )
+        .unwrap();
         let mut p = crate::project::create(&repo, "a", &nuevo_proyecto("Tema")).unwrap();
 
         link_project(&repo, "a", &mut a, &mut p, None).unwrap();
@@ -271,7 +284,15 @@ mod tests {
 
         // Una recopilación sí puede referenciarlo, sin que deje su release de
         // origen (apartado 8.3, tercer guion).
-        let mut comp = create(&repo, "a", &NewRelease { title: "Recopilacion".into(), ..nuevo_release(ReleaseClass::Comp) }).unwrap();
+        let mut comp = create(
+            &repo,
+            "a",
+            &NewRelease {
+                title: "Recopilacion".into(),
+                ..nuevo_release(ReleaseClass::Comp)
+            },
+        )
+        .unwrap();
         link_project(&repo, "a", &mut comp, &mut p, None).unwrap();
         assert_eq!(p.release_uid(), a.uid(), "conserva su release de origen");
         assert_eq!(comp.tracklist().len(), 1);
@@ -280,9 +301,25 @@ mod tests {
     #[test]
     fn el_nivel_del_release_es_el_mas_alto_de_sus_integrantes() {
         let (_d, repo) = entorno();
-        let mut r = create(&repo, "a", &NewRelease { level: Level::A, ..nuevo_release(ReleaseClass::Single) }).unwrap();
+        let mut r = create(
+            &repo,
+            "a",
+            &NewRelease {
+                level: Level::A,
+                ..nuevo_release(ReleaseClass::Single)
+            },
+        )
+        .unwrap();
         assert_eq!(r.level(), Level::A);
-        let mut p = crate::project::create(&repo, "a", &NewProject { level: Level::C, ..nuevo_proyecto("Tema") }).unwrap();
+        let mut p = crate::project::create(
+            &repo,
+            "a",
+            &NewProject {
+                level: Level::C,
+                ..nuevo_proyecto("Tema")
+            },
+        )
+        .unwrap();
         link_project(&repo, "a", &mut r, &mut p, None).unwrap();
         assert_eq!(r.level(), Level::C);
     }

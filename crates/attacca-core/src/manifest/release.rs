@@ -77,7 +77,10 @@ impl Track {
                 .and_then(|n| n.present_str())
                 .unwrap_or_default()
                 .to_string(),
-            isrc: m.get("isrc").and_then(|n| n.present_str()).map(str::to_string),
+            isrc: m
+                .get("isrc")
+                .and_then(|n| n.present_str())
+                .map(str::to_string),
         })
     }
 
@@ -187,9 +190,10 @@ impl ReleaseManifest {
     pub fn set_tracklist(&mut self, tracks: &[Track]) {
         let mut ordenados = tracks.to_vec();
         ordenados.sort_by_key(|t| t.position);
-        self.0
-            .doc
-            .set("tracklist", Node::Seq(ordenados.iter().map(Track::to_node).collect()));
+        self.0.doc.set(
+            "tracklist",
+            Node::Seq(ordenados.iter().map(Track::to_node).collect()),
+        );
     }
 
     /// Vincula un proyecto al release. La vinculación es por identificador
@@ -208,9 +212,8 @@ impl ReleaseManifest {
                 format!("El proyecto {project_uid} ya figura en el tracklist. El release no se ha modificado."),
             ));
         }
-        let pos = position.unwrap_or_else(|| {
-            tracks.iter().map(|t| t.position).max().unwrap_or(0) + 1
-        });
+        let pos =
+            position.unwrap_or_else(|| tracks.iter().map(|t| t.position).max().unwrap_or(0) + 1);
         if tracks.iter().any(|t| t.position == pos) {
             return Err(Error::requirement(
                 "8.3",
@@ -244,7 +247,11 @@ impl ReleaseManifest {
             .doc
             .get("gaps")
             .and_then(|n| n.as_seq())
-            .map(|s| s.iter().filter_map(|n| n.as_map()?.get("position")?.as_int()).collect())
+            .map(|s| {
+                s.iter()
+                    .filter_map(|n| n.as_map()?.get("position")?.as_int())
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -298,7 +305,9 @@ pub fn check_common_requirements(release: &ReleaseManifest, project: &Map) -> Ve
     }
     fallos
 }
-
+// El Anexo B fija los campos de este artefacto; agruparlos en una
+// estructura intermedia solo desplazaría la lista.
+#[allow(clippy::too_many_arguments)]
 /// Construye el manifiesto de un release recién creado.
 pub fn scaffold(
     uid: &str,
@@ -340,7 +349,10 @@ pub fn scaffold(
             ("true_peak_ceiling_db", Node::Null),
         ]),
     );
-    d.set("art", Node::map(vec![("path", Node::Null), ("pixels", Node::Null)]));
+    d.set(
+        "art",
+        Node::map(vec![("path", Node::Null), ("pixels", Node::Null)]),
+    );
     d.set("deliveries", Node::Seq(Vec::new()));
     d.set(
         "custody",
@@ -390,8 +402,10 @@ mod tests {
     #[test]
     fn la_vinculacion_es_por_identificador_interno() {
         let mut r = release();
-        r.link_project("UID-A", "2026-08-06_Tema-A_ORIG", "Tema A", None).unwrap();
-        r.link_project("UID-B", "2026-08-06_Tema-B_ORIG", "Tema B", None).unwrap();
+        r.link_project("UID-A", "2026-08-06_Tema-A_ORIG", "Tema A", None)
+            .unwrap();
+        r.link_project("UID-B", "2026-08-06_Tema-B_ORIG", "Tema B", None)
+            .unwrap();
         let t = r.tracklist();
         assert_eq!(t.len(), 2);
         assert_eq!(t[0].position, 1);
@@ -402,7 +416,13 @@ mod tests {
     #[test]
     fn renombrar_un_tema_no_rompe_el_tracklist() {
         let mut r = release();
-        r.link_project("UID-A", "2026-08-06_Titulo-Viejo_ORIG", "Titulo Viejo", None).unwrap();
+        r.link_project(
+            "UID-A",
+            "2026-08-06_Titulo-Viejo_ORIG",
+            "Titulo Viejo",
+            None,
+        )
+        .unwrap();
         // El proyecto cambia su identificador legible. La referencia por
         // identificador interno sigue resolviendo.
         let t = r.tracklist();
@@ -428,7 +448,11 @@ mod tests {
         r.record_gap(3, "Tema descartado en preproduccion");
 
         let posiciones: Vec<i64> = r.tracklist().iter().map(|t| t.position).collect();
-        assert_eq!(posiciones, vec![1, 2, 4], "no se renumera el material restante");
+        assert_eq!(
+            posiciones,
+            vec![1, 2, 4],
+            "no se renumera el material restante"
+        );
         assert_eq!(r.gaps(), vec![3]);
     }
 
@@ -452,13 +476,31 @@ mod tests {
         );
 
         let mut conforme = Map::new();
-        conforme.set("audio", Node::map(vec![("sample_rate", Node::Int(48000)), ("bit_depth", Node::Int(24))]));
-        conforme.set("master", Node::map(vec![("true_peak_db", Node::Float(-1.2))]));
+        conforme.set(
+            "audio",
+            Node::map(vec![
+                ("sample_rate", Node::Int(48000)),
+                ("bit_depth", Node::Int(24)),
+            ]),
+        );
+        conforme.set(
+            "master",
+            Node::map(vec![("true_peak_db", Node::Float(-1.2))]),
+        );
         assert!(check_common_requirements(&r, &conforme).is_empty());
 
         let mut discrepante = Map::new();
-        discrepante.set("audio", Node::map(vec![("sample_rate", Node::Int(44100)), ("bit_depth", Node::Int(24))]));
-        discrepante.set("master", Node::map(vec![("true_peak_db", Node::Float(-0.3))]));
+        discrepante.set(
+            "audio",
+            Node::map(vec![
+                ("sample_rate", Node::Int(44100)),
+                ("bit_depth", Node::Int(24)),
+            ]),
+        );
+        discrepante.set(
+            "master",
+            Node::map(vec![("true_peak_db", Node::Float(-0.3))]),
+        );
         let fallos = check_common_requirements(&r, &discrepante);
         assert_eq!(fallos.len(), 2, "{fallos:?}");
     }
@@ -479,7 +521,25 @@ mod tests {
     #[test]
     fn el_esquema_reproduce_el_anexo_b_7() {
         let d = release();
-        for campo in ["stave", "uid", "id", "class", "title", "artist", "status", "release_date", "tracklist", "gaps", "identifiers", "common_requirements", "art", "deliveries", "custody", "replication", "exceptions"] {
+        for campo in [
+            "stave",
+            "uid",
+            "id",
+            "class",
+            "title",
+            "artist",
+            "status",
+            "release_date",
+            "tracklist",
+            "gaps",
+            "identifiers",
+            "common_requirements",
+            "art",
+            "deliveries",
+            "custody",
+            "replication",
+            "exceptions",
+        ] {
             assert!(d.doc().get(campo).is_some(), "falta {campo}");
         }
     }

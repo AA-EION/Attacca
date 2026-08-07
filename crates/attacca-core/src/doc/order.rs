@@ -84,7 +84,13 @@ fn order_project(doc: &mut Map) {
     sub(
         doc,
         "lineage",
-        &["parent_uid", "parent_id", "derived_at", "reason", "parallel"],
+        &[
+            "parent_uid",
+            "parent_id",
+            "derived_at",
+            "reason",
+            "parallel",
+        ],
     );
     seq_entries(doc, "derived", &["uid", "id", "derived_at"]);
     sub(doc, "replication", REPLICATION_BLOCK);
@@ -210,7 +216,13 @@ fn order_exchange(doc: &mut Map) {
     sub(
         doc,
         "usage",
-        &["permitted", "territory", "term", "sublicensing", "forwarding"],
+        &[
+            "permitted",
+            "territory",
+            "term",
+            "sublicensing",
+            "forwarding",
+        ],
     );
     sub(
         doc,
@@ -300,7 +312,11 @@ fn order_receipt(doc: &mut Map) {
             "declared_checks",
         ],
     );
-    sub(doc, "custody", &["accepted", "assumed_at", "expected_return"]);
+    sub(
+        doc,
+        "custody",
+        &["accepted", "assumed_at", "expected_return"],
+    );
     seq_entries(doc, "discrepancies", &["check", "detail"]);
     sub(doc, "acceptance", &["usage_terms", "retention_until"]);
 }
@@ -383,9 +399,17 @@ mod tests {
         .unwrap();
         canonical_order(&mut doc, ArtifactKind::Project);
         let keys: Vec<&str> = doc.keys().collect();
-        assert_eq!(keys, vec!["stave", "uid", "id", "custody", "x_otrofab_campo"]);
         assert_eq!(
-            doc.get("stave").unwrap().as_map().unwrap().keys().collect::<Vec<_>>(),
+            keys,
+            vec!["stave", "uid", "id", "custody", "x_otrofab_campo"]
+        );
+        assert_eq!(
+            doc.get("stave")
+                .unwrap()
+                .as_map()
+                .unwrap()
+                .keys()
+                .collect::<Vec<_>>(),
             vec!["version", "level"]
         );
         assert!(emit(&doc).contains("x_otrofab_campo: valor"));

@@ -42,7 +42,9 @@ pub struct Map {
 
 impl Map {
     pub fn new() -> Self {
-        Self { entries: Vec::new() }
+        Self {
+            entries: Vec::new(),
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -278,10 +280,7 @@ mod tests {
     #[test]
     fn at_recorre_rutas_anidadas() {
         let mut root = Map::new();
-        root.set(
-            "custody",
-            Node::map(vec![("state", Node::str("propia"))]),
-        );
+        root.set("custody", Node::map(vec![("state", Node::str("propia"))]));
         assert_eq!(root.at("custody.state").unwrap().as_str(), Some("propia"));
         assert!(root.at("custody.holder").is_none());
     }

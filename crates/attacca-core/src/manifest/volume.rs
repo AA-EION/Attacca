@@ -28,12 +28,12 @@ impl VolumeRole {
     }
 
     pub fn parse(s: &str) -> Option<VolumeRole> {
-        Some(match s {
+        match s {
             "LOCAL" => Some(VolumeRole::Local),
             "PORTABLE" => Some(VolumeRole::Portable),
             "NETWORK" => Some(VolumeRole::Network),
             _ => None,
-        }?)
+        }
     }
 }
 
@@ -132,7 +132,11 @@ impl VolumeDescriptor {
 
     /// Actualiza las capacidades observadas del sistema de archivos.
     pub fn set_capabilities(&mut self, caps: FsCapabilities, fs_name: Option<&str>) {
-        let fs = self.0.doc.ensure_map("stave_volume").ensure_map("filesystem");
+        let fs = self
+            .0
+            .doc
+            .ensure_map("stave_volume")
+            .ensure_map("filesystem");
         if let Some(name) = fs_name {
             fs.set("name", Node::str(name));
         }
@@ -140,7 +144,9 @@ impl VolumeDescriptor {
         fs.set("preserves_case", Node::Bool(caps.preserves_case));
     }
 }
-
+// El Anexo B fija los campos de este artefacto; agruparlos en una
+// estructura intermedia solo desplazaría la lista.
+#[allow(clippy::too_many_arguments)]
 /// Construye un descriptor de volumen conforme al Anexo B.5.
 pub fn scaffold(
     uuid: &str,
@@ -247,7 +253,10 @@ mod tests {
         let u = new_volume_uuid();
         assert_eq!(u.len(), 36);
         assert_eq!(u.as_bytes()[14], b'4', "versión 4");
-        assert!(matches!(u.as_bytes()[19], b'8' | b'9' | b'a' | b'b'), "variante RFC 4122");
+        assert!(
+            matches!(u.as_bytes()[19], b'8' | b'9' | b'a' | b'b'),
+            "variante RFC 4122"
+        );
         assert_ne!(new_volume_uuid(), new_volume_uuid());
     }
 
@@ -258,20 +267,38 @@ mod tests {
             "Estudio - Portable 01",
             VolumeRole::Portable,
             "/Volumes/STUDIO-PORT-01/.stave",
-            FsCapabilities { enforces_readonly: false, preserves_case: true },
+            FsCapabilities {
+                enforces_readonly: false,
+                preserves_case: true,
+            },
             "exfat",
             &["20_PROJECTS"],
             true,
         );
-        for campo in ["version", "uuid", "label", "role", "created", "root", "filesystem", "policy", "last_seen"] {
+        for campo in [
+            "version",
+            "uuid",
+            "label",
+            "role",
+            "created",
+            "root",
+            "filesystem",
+            "policy",
+            "last_seen",
+        ] {
             assert!(
                 d.at(&format!("stave_volume.{campo}")).is_some(),
                 "falta {campo}"
             );
         }
-        assert_eq!(d.at("stave_volume.role").unwrap().as_str(), Some("PORTABLE"));
         assert_eq!(
-            d.at("stave_volume.filesystem.enforces_readonly").unwrap().as_bool(),
+            d.at("stave_volume.role").unwrap().as_str(),
+            Some("PORTABLE")
+        );
+        assert_eq!(
+            d.at("stave_volume.filesystem.enforces_readonly")
+                .unwrap()
+                .as_bool(),
             Some(false)
         );
     }
@@ -282,9 +309,17 @@ mod tests {
         // suplirse mediante el marcador.
         let mut v = VolumeDescriptor::new(Path::new("VOLUME.yaml"));
         *v.doc_mut() = scaffold(
-            "u", "Portatil exFAT", VolumeRole::Portable, "/v/.stave",
-            FsCapabilities { enforces_readonly: false, preserves_case: false },
-            "exfat", &["20_PROJECTS"], false,
+            "u",
+            "Portatil exFAT",
+            VolumeRole::Portable,
+            "/v/.stave",
+            FsCapabilities {
+                enforces_readonly: false,
+                preserves_case: false,
+            },
+            "exfat",
+            &["20_PROJECTS"],
+            false,
         );
         assert!(!v.enforces_readonly());
         assert_eq!(v.filesystem_name(), Some("exfat"));
@@ -293,20 +328,35 @@ mod tests {
     #[test]
     fn el_identificador_persistente_sobrevive_a_una_reconexion() {
         let dir = tempfile::tempdir().unwrap();
-        let primero = ensure_descriptor(dir.path(), "Local", VolumeRole::Local, "/home/u/.stave").unwrap();
+        let primero =
+            ensure_descriptor(dir.path(), "Local", VolumeRole::Local, "/home/u/.stave").unwrap();
         let uuid = primero.uuid().unwrap().to_string();
 
         // Segunda conexión: el descriptor ya existe.
-        let segundo = ensure_descriptor(dir.path(), "Local renombrado", VolumeRole::Local, "/otra/ruta").unwrap();
-        assert_eq!(segundo.uuid().unwrap(), uuid, "el identificador no debe cambiar");
+        let segundo = ensure_descriptor(
+            dir.path(),
+            "Local renombrado",
+            VolumeRole::Local,
+            "/otra/ruta",
+        )
+        .unwrap();
+        assert_eq!(
+            segundo.uuid().unwrap(),
+            uuid,
+            "el identificador no debe cambiar"
+        );
     }
 
     #[test]
     fn la_sonda_de_capacidades_se_reeja_en_cada_conexion() {
         let dir = tempfile::tempdir().unwrap();
-        let d = ensure_descriptor(dir.path(), "Local", VolumeRole::Local, "/home/u/.stave").unwrap();
+        let d =
+            ensure_descriptor(dir.path(), "Local", VolumeRole::Local, "/home/u/.stave").unwrap();
         // En un sistema de archivos corriente de Linux el atributo se sostiene.
-        assert!(d.doc().at("stave_volume.filesystem.enforces_readonly").is_some());
+        assert!(d
+            .doc()
+            .at("stave_volume.filesystem.enforces_readonly")
+            .is_some());
         assert!(d.doc().at("stave_volume.last_seen").is_some());
     }
 }

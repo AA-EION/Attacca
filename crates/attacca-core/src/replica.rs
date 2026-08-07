@@ -357,10 +357,16 @@ mod tests {
 
     #[test]
     fn exige_exactamente_una_replica_activa() {
-        let una = vec![replica("v1", ReplicaState::Active), replica("v2", ReplicaState::Standby)];
+        let una = vec![
+            replica("v1", ReplicaState::Active),
+            replica("v2", ReplicaState::Standby),
+        ];
         assert!(check_single_active(&una, CustodyState::Own).is_ok());
 
-        let dos = vec![replica("v1", ReplicaState::Active), replica("v2", ReplicaState::Active)];
+        let dos = vec![
+            replica("v1", ReplicaState::Active),
+            replica("v2", ReplicaState::Active),
+        ];
         assert!(check_single_active(&dos, CustodyState::Own).is_err());
 
         let ninguna = vec![replica("v1", ReplicaState::Standby)];
@@ -381,7 +387,10 @@ mod tests {
     #[test]
     fn el_inventario_sobrevive_a_una_ida_y_vuelta() {
         let mut doc = Map::new();
-        let originales = vec![replica("v1", ReplicaState::Active), replica("v2", ReplicaState::Divergent)];
+        let originales = vec![
+            replica("v1", ReplicaState::Active),
+            replica("v2", ReplicaState::Divergent),
+        ];
         set_replicas(&mut doc, &originales);
         assert_eq!(replicas_of(&doc), originales);
     }
@@ -393,7 +402,10 @@ mod tests {
         p.doc_mut()
             .ensure_map("replication")
             .set("active_volume", Node::str("vol-portatil"));
-        set_replicas(p.doc_mut(), &[replica("vol-portatil", ReplicaState::Active)]);
+        set_replicas(
+            p.doc_mut(),
+            &[replica("vol-portatil", ReplicaState::Active)],
+        );
 
         assert!(require_active_replica(&p, "vol-portatil").is_ok());
         let e = require_active_replica(&p, "vol-local").unwrap_err();

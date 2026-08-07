@@ -17,7 +17,9 @@ use attacca_core::package::container::Progress;
 use attacca_core::package::{custody_ops, emit, ingest};
 use attacca_core::repo::Repository;
 use attacca_core::validate::Severity;
-use attacca_core::{clock, conformance, eventlog, index, integrity, journal, project, release, replica};
+use attacca_core::{
+    clock, conformance, eventlog, index, integrity, journal, project, release, replica,
+};
 use clap::{Parser, Subcommand};
 use std::io::Write;
 use std::path::PathBuf;
@@ -76,10 +78,7 @@ enum Command {
         release: Option<String>,
     },
     /// Cambiar el titulo de un proyecto
-    Renombrar {
-        uid: String,
-        titulo: String,
-    },
+    Renombrar { uid: String, titulo: String },
     /// Derivar un proyecto conforme al apartado 14.4
     Derivar {
         uid: String,
@@ -111,9 +110,7 @@ enum Command {
         posicion: Option<i64>,
     },
     /// Validar la conformidad de un proyecto
-    Validar {
-        uid: Option<String>,
-    },
+    Validar { uid: Option<String> },
     /// Generar el manifiesto de integridad de un proyecto
     Integridad {
         uid: String,
@@ -174,13 +171,9 @@ enum Command {
         aceptar_custodia: bool,
     },
     /// Reclamar el retorno de una cesion vencida
-    Reclamar {
-        uid: String,
-    },
+    Reclamar { uid: String },
     /// Recuperar la custodia por vencimiento
-    Recuperar {
-        uid: String,
-    },
+    Recuperar { uid: String },
     /// Estado del registro de eventos
     Registro {
         /// Comprobar el encadenamiento por resumen
@@ -224,7 +217,8 @@ fn run(cli: &Cli) -> attacca_core::Result<()> {
             return Ok(());
         }
         Command::Reloj => {
-            let estado = clock::check_sync(clock::DEFAULT_SOURCES, std::time::Duration::from_secs(3));
+            let estado =
+                clock::check_sync(clock::DEFAULT_SOURCES, std::time::Duration::from_secs(3));
             match estado {
                 SyncState::Synced { drift_ms } => {
                     println!("Reloj sincronizado. Desviacion: {drift_ms} ms.");
@@ -240,7 +234,9 @@ fn run(cli: &Cli) -> attacca_core::Result<()> {
                 }
                 SyncState::Unavailable => {
                     println!("No se pudo consultar ninguna fuente de tiempo de red.");
-                    println!("Se puede trabajar; la emision de paquetes y de acuses queda bloqueada.");
+                    println!(
+                        "Se puede trabajar; la emision de paquetes y de acuses queda bloqueada."
+                    );
                     println!("Conectar el equipo a la red y repetir la comprobacion.");
                 }
             }
@@ -300,7 +296,10 @@ fn run(cli: &Cli) -> attacca_core::Result<()> {
             }
             if !idx.unreadable.is_empty() {
                 println!();
-                println!("{} manifiestos no se pudieron interpretar:", idx.unreadable.len());
+                println!(
+                    "{} manifiestos no se pudieron interpretar:",
+                    idx.unreadable.len()
+                );
                 for (ruta, motivo) in &idx.unreadable {
                     println!("  {}: {motivo}", ruta.display());
                 }
@@ -310,14 +309,24 @@ fn run(cli: &Cli) -> attacca_core::Result<()> {
                 println!(
                     "{} proyectos. Indice {} en {} ms.",
                     idx.projects.len(),
-                    if r.rebuilt { "reconstruido desde el arbol" } else { "leido de la cache" },
+                    if r.rebuilt {
+                        "reconstruido desde el arbol"
+                    } else {
+                        "leido de la cache"
+                    },
                     r.elapsed_ms
                 );
             }
         }
 
         Command::Crear {
-            titulo, artista, tipo, nivel, frecuencia, bits, release: release_uid,
+            titulo,
+            artista,
+            tipo,
+            nivel,
+            frecuencia,
+            bits,
+            release: release_uid,
         } => {
             let m = project::create(
                 &repo,
@@ -344,7 +353,9 @@ fn run(cli: &Cli) -> attacca_core::Result<()> {
                 m.sample_rate().unwrap_or(0),
                 m.bit_depth().unwrap_or(0)
             );
-            println!("Ambas quedan fijadas para todo el ciclo de vida del proyecto (apartado 10.1).");
+            println!(
+                "Ambas quedan fijadas para todo el ciclo de vida del proyecto (apartado 10.1)."
+            );
         }
 
         Command::Renombrar { uid, titulo } => {
@@ -358,7 +369,11 @@ fn run(cli: &Cli) -> attacca_core::Result<()> {
             println!("El identificador interno no ha cambiado. Ninguna referencia se ha roto.");
         }
 
-        Command::Derivar { uid, motivo, paralelo } => {
+        Command::Derivar {
+            uid,
+            motivo,
+            paralelo,
+        } => {
             let mut m = cargar_proyecto(&repo, uid)?;
             let d = project::derive(&repo, &cli.actor, &mut m, motivo, *paralelo)?;
             println!("{}", d.derived_id);
@@ -383,7 +398,11 @@ fn run(cli: &Cli) -> attacca_core::Result<()> {
             println!("{}", destino.display());
         }
 
-        Command::CrearRelease { titulo, artista, clase } => {
+        Command::CrearRelease {
+            titulo,
+            artista,
+            clase,
+        } => {
             let clase = ReleaseClass::parse(clase).ok_or_else(|| {
                 attacca_core::Error::requirement(
                     "8.2",
@@ -406,7 +425,11 @@ fn run(cli: &Cli) -> attacca_core::Result<()> {
             println!("{}", m.root().display());
         }
 
-        Command::Vincular { release_uid, proyecto_uid, posicion } => {
+        Command::Vincular {
+            release_uid,
+            proyecto_uid,
+            posicion,
+        } => {
             let ruta = release::find_by_uid(&repo, release_uid).ok_or_else(|| {
                 attacca_core::Error::input(format!("No existe ningun release con identificador {release_uid}. No se ha vinculado nada."))
             })?;
@@ -442,11 +465,19 @@ fn run(cli: &Cli) -> attacca_core::Result<()> {
                     pendientes,
                     excepciones
                 );
-                for f in informe.findings.iter().filter(|f| f.severity == Severity::Breach) {
+                for f in informe
+                    .findings
+                    .iter()
+                    .filter(|f| f.severity == Severity::Breach)
+                {
                     println!("    apartado {:<8} {}", f.clause, f.detail);
                 }
                 if uids.len() == 1 {
-                    for f in informe.findings.iter().filter(|f| f.severity == Severity::Pending) {
+                    for f in informe
+                        .findings
+                        .iter()
+                        .filter(|f| f.severity == Severity::Pending)
+                    {
                         println!("    pendiente  {:<8} {}", f.clause, f.detail);
                     }
                 }
@@ -479,9 +510,19 @@ fn run(cli: &Cli) -> attacca_core::Result<()> {
         }
 
         Command::Emitir {
-            uid, perfil, clasificacion, destinatario, contacto, finalidad,
-            retencion, acuse, ceder_custodia, retorno_esperado, gracia,
-            sin_serializar, control_aprobado,
+            uid,
+            perfil,
+            clasificacion,
+            destinatario,
+            contacto,
+            finalidad,
+            retencion,
+            acuse,
+            ceder_custodia,
+            retorno_esperado,
+            gracia,
+            sin_serializar,
+            control_aprobado,
         } => {
             let mut m = cargar_proyecto(&repo, uid)?;
             let perfil = Profile::parse(perfil).ok_or_else(|| {
@@ -523,14 +564,23 @@ fn run(cli: &Cli) -> attacca_core::Result<()> {
                 qc_approved: *control_aprobado,
             };
 
-            let estado = clock::check_sync(clock::DEFAULT_SOURCES, std::time::Duration::from_secs(3));
+            let estado =
+                clock::check_sync(clock::DEFAULT_SOURCES, std::time::Duration::from_secs(3));
             let mut avance = barra_de_progreso();
             let cancelado = || false;
-            let mut progreso = Progress { on_progress: &mut avance, cancelled: &cancelado };
+            let mut progreso = Progress {
+                on_progress: &mut avance,
+                cancelled: &cancelado,
+            };
 
             let e = emit::emit(
-                &repo, &cli.actor, &mut m, &envio,
-                &emit::Payload::for_profile(perfil), estado, &mut progreso,
+                &repo,
+                &cli.actor,
+                &mut m,
+                &envio,
+                &emit::Payload::for_profile(perfil),
+                estado,
+                &mut progreso,
             )?;
             println!();
             println!("{}", e.shipment_id);
@@ -541,21 +591,31 @@ fn run(cli: &Cli) -> attacca_core::Result<()> {
             if *ceder_custodia {
                 println!();
                 println!("Estado de custodia: {}.", e.custody_state.as_str());
-                println!("La copia local queda en solo lectura hasta que se obtenga el acuse de recibo.");
+                println!(
+                    "La copia local queda en solo lectura hasta que se obtenga el acuse de recibo."
+                );
             }
         }
 
-        Command::Verificar { paquete, emisor, acuse } => {
+        Command::Verificar {
+            paquete,
+            emisor,
+            acuse,
+        } => {
             let ctx = contexto_recepcion(cli, emisor);
             let mut avance = barra_de_progreso();
             let cancelado = || false;
-            let mut progreso = Progress { on_progress: &mut avance, cancelled: &cancelado };
+            let mut progreso = Progress {
+                on_progress: &mut avance,
+                cancelled: &cancelado,
+            };
             let v = ingest::verify(&repo, &cli.actor, paquete, &ctx, &mut progreso)?;
             println!();
             imprimir_verificacion(&v);
 
             if let Some(salida) = acuse {
-                let estado = clock::check_sync(clock::DEFAULT_SOURCES, std::time::Duration::from_secs(3));
+                let estado =
+                    clock::check_sync(clock::DEFAULT_SOURCES, std::time::Duration::from_secs(3));
                 ingest::issue_receipt(
                     &repo, &cli.actor, &v, &ctx, "01_REF", None, false, None, estado, salida,
                 )?;
@@ -564,11 +624,19 @@ fn run(cli: &Cli) -> attacca_core::Result<()> {
             }
         }
 
-        Command::Ingerir { paquete, emisor, destino, aceptar_custodia } => {
+        Command::Ingerir {
+            paquete,
+            emisor,
+            destino,
+            aceptar_custodia,
+        } => {
             let ctx = contexto_recepcion(cli, emisor);
             let mut avance = barra_de_progreso();
             let cancelado = || false;
-            let mut progreso = Progress { on_progress: &mut avance, cancelled: &cancelado };
+            let mut progreso = Progress {
+                on_progress: &mut avance,
+                cancelled: &cancelado,
+            };
             let v = ingest::verify(&repo, &cli.actor, paquete, &ctx, &mut progreso)?;
             println!();
             imprimir_verificacion(&v);
@@ -582,14 +650,29 @@ fn run(cli: &Cli) -> attacca_core::Result<()> {
                 Some(u) => Some(cargar_proyecto(&repo, u)?),
                 None => None,
             };
-            let estado = clock::check_sync(clock::DEFAULT_SOURCES, std::time::Duration::from_secs(3));
+            let estado =
+                clock::check_sync(clock::DEFAULT_SOURCES, std::time::Duration::from_secs(3));
             ingest::issue_receipt(
-                &repo, &cli.actor, &v, &ctx, "01_REF", None, *aceptar_custodia, None, estado,
-                &repo.root().join(format!("00_SYSTEM/acuse_{}.yaml", v.shipment_id)),
+                &repo,
+                &cli.actor,
+                &v,
+                &ctx,
+                "01_REF",
+                None,
+                *aceptar_custodia,
+                None,
+                estado,
+                &repo
+                    .root()
+                    .join(format!("00_SYSTEM/acuse_{}.yaml", v.shipment_id)),
             )?;
             let ing = ingest::ingest(&repo, &cli.actor, &v, &ctx, objetivo.as_mut(), paquete)?;
             println!();
-            println!("{} archivos incorporados en {}", ing.files, ing.destination.display());
+            println!(
+                "{} archivos incorporados en {}",
+                ing.files,
+                ing.destination.display()
+            );
             println!("Clase de destino: {}.", ing.destination_class);
             if ing.custody_assumed {
                 println!("Custodia asumida. El estado del proyecto de destino es propia.");
@@ -625,7 +708,10 @@ fn run(cli: &Cli) -> attacca_core::Result<()> {
             if *verificar {
                 let c = log.verify_chain()?;
                 if c.is_intact() {
-                    println!("{} entradas. El encadenamiento por resumen esta intacto.", c.total);
+                    println!(
+                        "{} entradas. El encadenamiento por resumen esta intacto.",
+                        c.total
+                    );
                 } else {
                     println!("{} entradas.", c.total);
                     if !c.broken_links.is_empty() {
@@ -646,7 +732,14 @@ fn run(cli: &Cli) -> attacca_core::Result<()> {
                 }
                 return Ok(());
             }
-            for e in entradas.iter().rev().take(*ultimas).collect::<Vec<_>>().into_iter().rev() {
+            for e in entradas
+                .iter()
+                .rev()
+                .take(*ultimas)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+            {
                 println!(
                     "{}  {:<34}  {:<10}  {}",
                     e.ts,
@@ -679,12 +772,17 @@ fn run(cli: &Cli) -> attacca_core::Result<()> {
                 }
                 if *limpiar {
                     let n = journal::clear_abandoned_temps(&r);
-                    println!("{n} suprimidos. Los archivos de destino conservan su contenido anterior.");
+                    println!(
+                        "{n} suprimidos. Los archivos de destino conservan su contenido anterior."
+                    );
                 }
             }
         }
 
-        Command::Reconciliar { activa, reconectada } => {
+        Command::Reconciliar {
+            activa,
+            reconectada,
+        } => {
             match replica::reconcile(activa, reconectada)? {
                 replica::Reconciliation::Synchronizable => {
                     println!("La replica reconectada no contiene cambios posteriores.");
@@ -780,11 +878,15 @@ fn contexto_recepcion(cli: &Cli, emisor: &str) -> ingest::ReceptionContext {
 
 fn imprimir_verificacion(v: &ingest::Verification) {
     println!("Envio {}", v.shipment_id);
-    println!("Resultado: {}", match v.result {
-        attacca_core::manifest::receipt::ReceiptResult::Accepted => "aceptado",
-        attacca_core::manifest::receipt::ReceiptResult::AcceptedWithReservations => "aceptado con reservas",
-        attacca_core::manifest::receipt::ReceiptResult::Rejected => "rechazado",
-    });
+    println!(
+        "Resultado: {}",
+        match v.result {
+            attacca_core::manifest::receipt::ReceiptResult::Accepted => "aceptado",
+            attacca_core::manifest::receipt::ReceiptResult::AcceptedWithReservations =>
+                "aceptado con reservas",
+            attacca_core::manifest::receipt::ReceiptResult::Rejected => "rechazado",
+        }
+    );
     if let Some(fallo) = v.checks.first_failure() {
         println!("Primera verificacion fallida: {fallo}.");
     }
@@ -810,5 +912,8 @@ fn barra_de_progreso() -> impl FnMut(usize, usize) {
 }
 
 fn numeros(v: &[usize]) -> String {
-    v.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(", ")
+    v.iter()
+        .map(|n| n.to_string())
+        .collect::<Vec<_>>()
+        .join(", ")
 }

@@ -267,9 +267,9 @@ pub fn merge_chronology(
         let ya_consta = out
             .iter()
             .any(|e| e.action == entry.action && e.ts == entry.ts && e.org == entry.org);
-        let repetido_en_lote = pendientes
-            .iter()
-            .any(|e: &ChronologyEntry| e.action == entry.action && e.ts == entry.ts && e.org == entry.org);
+        let repetido_en_lote = pendientes.iter().any(|e: &ChronologyEntry| {
+            e.action == entry.action && e.ts == entry.ts && e.org == entry.org
+        });
         if !ya_consta && !repetido_en_lote {
             pendientes.push(entry.clone());
         }
@@ -432,7 +432,10 @@ mod tests {
         let fusion = merge_chronology(&propios, &recibidos);
         // El asiento `sent` ya constaba y no se duplica.
         assert_eq!(fusion.len(), 4);
-        assert_eq!(fusion.iter().map(|e| e.seq).collect::<Vec<_>>(), vec![1, 2, 3, 4]);
+        assert_eq!(
+            fusion.iter().map(|e| e.seq).collect::<Vec<_>>(),
+            vec![1, 2, 3, 4]
+        );
         assert!(check_chronology(&fusion).is_clean());
     }
 
@@ -441,8 +444,11 @@ mod tests {
         // Ambas partes numeraron a partir del mismo punto mientras el envío
         // estaba en tránsito: el cedente registró `custody_transferred` con el
         // 3, y el cesionario `received` también con el 3.
-        let mut propio_transferido =
-            asiento(3, CustodyAction::CustodyTransferred, "2026-08-06T12:00:00-05:00");
+        let mut propio_transferido = asiento(
+            3,
+            CustodyAction::CustodyTransferred,
+            "2026-08-06T12:00:00-05:00",
+        );
         propio_transferido.org = "Estudio A".into();
         let propios = vec![
             asiento(1, CustodyAction::Exported, "2026-08-06T10:00:00-05:00"),
@@ -453,7 +459,11 @@ mod tests {
         let recibidos: Vec<ChronologyEntry> = [
             (3, CustodyAction::Received, "2026-08-06T11:00:00-05:00"),
             (4, CustodyAction::Imported, "2026-08-06T11:30:00-05:00"),
-            (5, CustodyAction::CustodyAssumed, "2026-08-06T11:40:00-05:00"),
+            (
+                5,
+                CustodyAction::CustodyAssumed,
+                "2026-08-06T11:40:00-05:00",
+            ),
         ]
         .iter()
         .map(|(seq, accion, ts)| {
@@ -468,8 +478,11 @@ mod tests {
         // Ningún asiento se suprime.
         assert_eq!(fusion.len(), 6);
         // La secuencia es consecutiva y sin duplicados.
-        assert_eq!(fusion.iter().map(|e| e.seq).collect::<Vec<_>>(), vec![1, 2, 3, 4, 5, 6]);
-        assert!(check_chronology(&fusion).is_blocking() == false);
+        assert_eq!(
+            fusion.iter().map(|e| e.seq).collect::<Vec<_>>(),
+            vec![1, 2, 3, 4, 5, 6]
+        );
+        assert!(!check_chronology(&fusion).is_blocking());
         assert!(check_chronology(&fusion).duplicate_seq.is_empty());
         assert!(check_chronology(&fusion).missing_seq.is_empty());
         // Los asientos propios conservan su número.
@@ -490,7 +503,10 @@ mod tests {
         assert_eq!(expiry_state(&vencido, 15).unwrap(), Expiry::ClaimDue);
 
         let muy_vencido = clock::add_days(&clock::today(), -40).unwrap();
-        assert_eq!(expiry_state(&muy_vencido, 15).unwrap(), Expiry::ReclaimAvailable);
+        assert_eq!(
+            expiry_state(&muy_vencido, 15).unwrap(),
+            Expiry::ReclaimAvailable
+        );
     }
 
     #[test]

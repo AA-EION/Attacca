@@ -113,7 +113,9 @@ fn collect(dir: &Path, out: &mut Vec<PathBuf>, depth: usize) {
     if depth > 24 {
         return;
     }
-    let Ok(entries) = fs::read_dir(dir) else { return };
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
     for entry in entries.flatten() {
         let path = entry.path();
         let Ok(ft) = entry.file_type() else { continue };

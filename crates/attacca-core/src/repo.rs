@@ -30,9 +30,7 @@ pub const REQUIRED_PROJECT_DIRS: &[&str] = &["00_ADMIN", "02_SESSIONS"];
 
 /// Subcarpetas de `00_ADMIN` (apartado 7.2). Solo se crean las que se usan; la
 /// lista sirve para colocar cada documento en su sitio sin preguntar.
-pub const ADMIN_SUBDIRS: &[&str] = &[
-    "Contracts", "Rights", "Credits", "Notes", "Score", "Art",
-];
+pub const ADMIN_SUBDIRS: &[&str] = &["Contracts", "Rights", "Credits", "Notes", "Score", "Art"];
 
 /// Carpetas del proyecto que no son obligatorias (Tabla 7). No se crean por
 /// anticipado: el apartado 7.1 desaconseja el andamiaje sin contenido.
@@ -132,8 +130,17 @@ impl Repository {
     /// finalidad es advertir del caso habitual antes de que se produzca.
     pub fn warn_if_synced_location(root: &Path) -> Option<String> {
         const SERVICIOS: &[&str] = &[
-            "Dropbox", "Google Drive", "GoogleDrive", "OneDrive", "iCloud Drive",
-            "Mobile Documents", "Box Sync", "MEGA", "pCloud", "Nextcloud", "Syncthing",
+            "Dropbox",
+            "Google Drive",
+            "GoogleDrive",
+            "OneDrive",
+            "iCloud Drive",
+            "Mobile Documents",
+            "Box Sync",
+            "MEGA",
+            "pCloud",
+            "Nextcloud",
+            "Syncthing",
         ];
         for componente in root.components() {
             let nombre = componente.as_os_str().to_string_lossy().to_string();
@@ -286,7 +293,9 @@ mod tests {
     fn descubre_los_proyectos_recorriendo_el_arbol() {
         let dir = tempfile::tempdir().unwrap();
         let repo = Repository::create(dir.path().join("stave")).unwrap();
-        let a = repo.domain("20_PROJECTS").join("1_ACTIVE/2026-08-06_A_ORIG");
+        let a = repo
+            .domain("20_PROJECTS")
+            .join("1_ACTIVE/2026-08-06_A_ORIG");
         let b = repo.domain("30_ARCHIVE").join("2025-01-01_B_ORIG");
         // Un proyecto dentro de un release.
         let c = repo
@@ -305,7 +314,9 @@ mod tests {
     fn la_carga_de_un_paquete_congelado_no_se_cuenta_como_proyecto() {
         let dir = tempfile::tempdir().unwrap();
         let repo = Repository::create(dir.path().join("stave")).unwrap();
-        let proyecto = repo.domain("20_PROJECTS").join("1_ACTIVE/2026-08-06_A_ORIG");
+        let proyecto = repo
+            .domain("20_PROJECTS")
+            .join("1_ACTIVE/2026-08-06_A_ORIG");
         fs::create_dir_all(&proyecto).unwrap();
         fs::write(proyecto.join(manifest::PROJECT_FILE), b"uid: PROYECTO\n").unwrap();
 
@@ -348,9 +359,17 @@ mod tests {
             .domain("20_PROJECTS")
             .join("1_ACTIVE/Artista/2026-08-06_Disco_ALBUM");
         fs::create_dir_all(rel.join("_RELEASE")).unwrap();
-        fs::write(rel.join("_RELEASE").join(manifest::RELEASE_FILE), b"uid: R\n").unwrap();
+        fs::write(
+            rel.join("_RELEASE").join(manifest::RELEASE_FILE),
+            b"uid: R\n",
+        )
+        .unwrap();
         fs::create_dir_all(rel.join("01_Tema")).unwrap();
-        fs::write(rel.join("01_Tema").join(manifest::PROJECT_FILE), b"uid: P\n").unwrap();
+        fs::write(
+            rel.join("01_Tema").join(manifest::PROJECT_FILE),
+            b"uid: P\n",
+        )
+        .unwrap();
 
         assert_eq!(repo.discover_releases().len(), 1);
         assert_eq!(repo.discover_projects().len(), 1);
@@ -360,7 +379,11 @@ mod tests {
     fn distingue_paquetes_en_verificacion_del_atraso_de_la_cuarentena() {
         let dir = tempfile::tempdir().unwrap();
         let repo = Repository::create(dir.path().join("stave")).unwrap();
-        fs::write(repo.inbox().join("STAVE-XCHG_2026-08-06_A_B_0007.stave"), b"pk").unwrap();
+        fs::write(
+            repo.inbox().join("STAVE-XCHG_2026-08-06_A_B_0007.stave"),
+            b"pk",
+        )
+        .unwrap();
         fs::write(repo.inbox().join("suelto.wav"), b"audio").unwrap();
         fs::write(repo.inbox().join(".DS_Store"), b"basura").unwrap();
 

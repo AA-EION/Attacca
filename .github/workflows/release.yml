@@ -1,0 +1,128 @@
+name: Publicacion
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+# Un binario o paquete por plataforma, firmado, con actualizacion verificable.
+#
+# Las credenciales de firma no estan generadas: son de quien publica. Sin ellas
+# el flujo produce paquetes sin firmar, y los pasos de firma se omiten. Los
+# secretos que hay que crear en el repositorio son:
+#
+#   TAURI_SIGNING_PRIVATE_KEY           clave de firma del actualizador
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  su contrasena
+#   APPLE_CERTIFICATE                   certificado Developer ID en base64
+#   APPLE_CERTIFICATE_PASSWORD          su contrasena
+#   APPLE_SIGNING_IDENTITY              nombre de la identidad
+#   APPLE_ID, APPLE_PASSWORD, APPLE_TEAM_ID   para el sellado ante Apple
+#   WINDOWS_CERTIFICATE                 certificado de firma en base64
+#   WINDOWS_CERTIFICATE_PASSWORD        su contrasena
+#
+# La clave publica del actualizador debe copiarse ademas en
+# app/src-tauri/tauri.conf.json, en plugins.updater.pubkey. Se genera con:
+#
+#   cargo tauri signer generate -w ~/.tauri/attacca.key
+
+jobs:
+  paquetes:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            objetivo: aarch64-apple-darwin
+            etiqueta: macos-arm64
+          - os: macos-latest
+            objetivo: x86_64-apple-darwin
+            etiqueta: macos-x86_64
+          - os: ubuntu-22.04
+            objetivo: x86_64-unknown-linux-gnu
+            etiqueta: linux-x86_64
+          - os: windows-latest
+            objetivo: x86_64-pc-windows-msvc
+            etiqueta: windows-x86_64
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.objetivo }}
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Dependencias de Linux
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            librsvg2-dev libsoup-3.0-dev libayatana-appindicator3-dev \
+            build-essential curl wget file libssl-dev
+
+      # Ningun paquete se publica sin que las pruebas pasen.
+      - name: Pruebas
+        run: cargo test -p attacca-core -p attacca-cli --release
+
+      - name: Linea de ordenes
+        run: cargo build --release -p attacca-cli --target ${{ matrix.objetivo }}
+
+      - name: Paquete de escritorio
+        uses: tauri-apps/tauri-action@v0
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          projectPath: app/src-tauri
+          args: --target ${{ matrix.objetivo }}
+          tagName: ${{ github.ref_name }}
+          releaseName: Attacca ${{ github.ref_name }}
+          releaseDraft: true
+          includeUpdaterJson: true
+
+      - name: Firma en Windows
+        if: matrix.os == 'windows-latest' && env.CERT != ''
+        env:
+          CERT: ${{ secrets.WINDOWS_CERTIFICATE }}
+          CERT_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        shell: pwsh
+        run: |
+          $bytes = [Convert]::FromBase64String($env:CERT)
+          [IO.File]::WriteAllBytes("cert.pfx", $bytes)
+          Get-ChildItem -Recurse -Include *.msi,*.exe target/${{ matrix.objetivo }}/release/bundle |
+            ForEach-Object {
+              & signtool sign /f cert.pfx /p $env:CERT_PASSWORD `
+                /tr http://timestamp.digicert.com /td sha256 /fd sha256 $_.FullName
+            }
+          Remove-Item cert.pfx
+
+      # La suma de verificacion permite comprobar la descarga sin confiar en el
+      # canal, del mismo modo que el manifiesto de integridad de un paquete.
+      - name: Sumas de verificacion
+        shell: bash
+        run: |
+          cd target/${{ matrix.objetivo }}/release
+          for f in attacca attacca.exe; do
+            [ -f "$f" ] && sha256sum "$f" > "$f.sha256"
+          done
+          find bundle -type f \( -name '*.dmg' -o -name '*.msi' -o -name '*.deb' \
+            -o -name '*.rpm' -o -name '*.AppImage' -o -name '*.exe' \) \
+            -exec sh -c 'sha256sum "$1" > "$1.sha256"' _ {} \;
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: attacca-${{ matrix.etiqueta }}
+          path: |
+            target/${{ matrix.objetivo }}/release/bundle/**/*
+            target/${{ matrix.objetivo }}/release/attacca
+            target/${{ matrix.objetivo }}/release/attacca.exe
+            target/${{ matrix.objetivo }}/release/*.sha256
+          if-no-files-found: warn

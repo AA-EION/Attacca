@@ -70,7 +70,9 @@ pub fn check_entry_name(name: &str) -> Result<()> {
     if bytes.len() >= 2 && bytes[1] == b':' && bytes[0].is_ascii_alphabetic() {
         return Err(Error::Container {
             check: "contenedor",
-            detail: format!("La entrada «{name}» lleva una unidad de disco y es por tanto absoluta."),
+            detail: format!(
+                "La entrada «{name}» lleva una unidad de disco y es por tanto absoluta."
+            ),
         });
     }
     // La barra invertida no es separador admitido (apartado 32.4.2).
@@ -113,7 +115,10 @@ pub fn build(package_dir: &Path, destination: &Path, progress: &mut Progress) ->
         )));
     }
     // Se comprueba el espacio antes de empezar, no durante.
-    space::ensure_available(destination.parent().unwrap_or(destination), walk::total_bytes(&entries))?;
+    space::ensure_available(
+        destination.parent().unwrap_or(destination),
+        walk::total_bytes(&entries),
+    )?;
 
     // Toda entrada se comprueba antes de escribirla: no se construye un
     // contenedor con una ruta no admitida.
@@ -228,17 +233,23 @@ pub fn verify_structure(container: &Path) -> Result<ContainerInfo> {
         if first.name() != MIMETYPE_ENTRY {
             return Err(Error::Container {
                 check: "contenedor",
-                detail: format!("La primera entrada se denomina «{}» y debe denominarse «{MIMETYPE_ENTRY}».", first.name()),
+                detail: format!(
+                    "La primera entrada se denomina «{}» y debe denominarse «{MIMETYPE_ENTRY}».",
+                    first.name()
+                ),
             });
         }
         if first.compression() != CompressionMethod::Stored {
             return Err(Error::Container {
                 check: "contenedor",
-                detail: "La entrada mimetype está comprimida y debe almacenarse sin compresión.".into(),
+                detail: "La entrada mimetype está comprimida y debe almacenarse sin compresión."
+                    .into(),
             });
         }
         let mut contenido = String::new();
-        first.read_to_string(&mut contenido).map_err(|e| Error::io(container, e))?;
+        first
+            .read_to_string(&mut contenido)
+            .map_err(|e| Error::io(container, e))?;
         if contenido != MIMETYPE {
             return Err(Error::Container {
                 check: "contenedor",
@@ -439,7 +450,10 @@ mod tests {
         let src = paquete(dir, nombre);
         let destino = dir.join(format!("{nombre}.stave"));
         let (mut prog, canc) = silent_progress();
-        let mut p = Progress { on_progress: &mut prog, cancelled: &canc };
+        let mut p = Progress {
+            on_progress: &mut prog,
+            cancelled: &canc,
+        };
         build(&src, &destino, &mut p).unwrap()
     }
 
@@ -498,7 +512,10 @@ mod tests {
 
         let destino = dir.path().join("extraccion");
         let (mut prog, canc) = silent_progress();
-        let mut p = Progress { on_progress: &mut prog, cancelled: &canc };
+        let mut p = Progress {
+            on_progress: &mut prog,
+            cancelled: &canc,
+        };
         assert!(extract(&malicioso, &destino, &mut p).is_err());
         // Nada se ha escrito fuera del destino ni dentro de él.
         assert!(!dir.path().join("escapado.txt").exists());
@@ -515,7 +532,8 @@ mod tests {
             zip.start_file("mimetype", stored).unwrap();
             zip.write_all(MIMETYPE.as_bytes()).unwrap();
             let opts = SimpleFileOptions::default();
-            zip.add_symlink("paquete/enlace", "/etc/passwd", opts).unwrap();
+            zip.add_symlink("paquete/enlace", "/etc/passwd", opts)
+                .unwrap();
             zip.finish().unwrap();
         }
         let e = verify_structure(&c).unwrap_err();
@@ -536,7 +554,10 @@ mod tests {
             zip.write_all(MIMETYPE.as_bytes()).unwrap();
             zip.finish().unwrap();
         }
-        assert!(verify_structure(&c).unwrap_err().to_string().contains("primera entrada"));
+        assert!(verify_structure(&c)
+            .unwrap_err()
+            .to_string()
+            .contains("primera entrada"));
     }
 
     #[test]
@@ -547,7 +568,10 @@ mod tests {
 
         let mut prog = |_: usize, _: usize| {};
         let cancelar = || true;
-        let mut p = Progress { on_progress: &mut prog, cancelled: &cancelar };
+        let mut p = Progress {
+            on_progress: &mut prog,
+            cancelled: &cancelar,
+        };
         assert!(build(&src, &destino, &mut p).is_err());
 
         // Ni el destino ni el temporal quedan en el sistema de archivos.
@@ -561,7 +585,10 @@ mod tests {
         let c = construir(dir.path(), "STAVE-XCHG_2026-08-06_A_B_0009");
         let destino = dir.path().join("extraido");
         let (mut prog, canc) = silent_progress();
-        let mut p = Progress { on_progress: &mut prog, cancelled: &canc };
+        let mut p = Progress {
+            on_progress: &mut prog,
+            cancelled: &canc,
+        };
         let raiz = extract(&c, &destino, &mut p).unwrap();
 
         assert_eq!(
@@ -581,7 +608,10 @@ mod tests {
         let canc = || false;
         {
             let mut prog = |hecho: usize, total: usize| vistos.push((hecho, total));
-            let mut p = Progress { on_progress: &mut prog, cancelled: &canc };
+            let mut p = Progress {
+                on_progress: &mut prog,
+                cancelled: &canc,
+            };
             build(&src, &destino, &mut p).unwrap();
         }
         assert_eq!(vistos.len(), 4);
@@ -594,7 +624,10 @@ mod tests {
         let src = paquete(dir.path(), "STAVE-XCHG_2026-08-06_A_B_0011");
         let destino = dir.path().join("p.stave");
         let (mut prog, canc) = silent_progress();
-        let mut p = Progress { on_progress: &mut prog, cancelled: &canc };
+        let mut p = Progress {
+            on_progress: &mut prog,
+            cancelled: &canc,
+        };
         build(&src, &destino, &mut p).unwrap();
         let primera = verify_structure(&destino).unwrap();
         build(&src, &destino, &mut p).unwrap();

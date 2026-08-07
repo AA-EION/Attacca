@@ -170,7 +170,10 @@ impl ExchangeManifest {
     }
 
     pub fn issued(&self) -> Option<&str> {
-        self.0.doc.at("shipment.issued").and_then(|n| n.present_str())
+        self.0
+            .doc
+            .at("shipment.issued")
+            .and_then(|n| n.present_str())
     }
 
     pub fn supersedes(&self) -> Option<&str> {
@@ -227,7 +230,11 @@ impl ExchangeManifest {
             .doc
             .at("scope.projects")
             .and_then(|n| n.as_seq())
-            .map(|s| s.iter().filter_map(|n| n.as_str().map(str::to_string)).collect())
+            .map(|s| {
+                s.iter()
+                    .filter_map(|n| n.as_str().map(str::to_string))
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -331,7 +338,11 @@ impl ExchangeManifest {
             .doc
             .get("expected_checks")
             .and_then(|n| n.as_seq())
-            .map(|s| s.iter().filter_map(|n| n.as_str().map(str::to_string)).collect())
+            .map(|s| {
+                s.iter()
+                    .filter_map(|n| n.as_str().map(str::to_string))
+                    .collect()
+            })
             .unwrap_or_default()
     }
 
@@ -500,7 +511,10 @@ impl ExchangeBuilder {
             "integrity",
             Node::map(vec![
                 ("algorithm", Node::str(crate::integrity::ALGORITHM)),
-                ("manifest", Node::str(super::super::package::bagit::MANIFEST_TXT)),
+                (
+                    "manifest",
+                    Node::str(super::super::package::bagit::MANIFEST_TXT),
+                ),
                 ("signature", Node::opt_str(self.signature.as_deref())),
             ]),
         );
@@ -521,7 +535,11 @@ impl ExchangeBuilder {
                 ("until", Node::str(&self.retention_until)),
                 (
                     "action_on_expiry",
-                    Node::str(if self.destroy_on_expiry { "destroy" } else { "keep" }),
+                    Node::str(if self.destroy_on_expiry {
+                        "destroy"
+                    } else {
+                        "keep"
+                    }),
                 ),
                 ("confirmation_required", Node::Bool(self.destroy_on_expiry)),
             ]),
@@ -650,7 +668,10 @@ mod tests {
         let mut b = constructor();
         b.profile = Profile::Production;
         let mut m = manifiesto(&b);
-        assert!(m.validate_schema().is_err(), "faltan los parámetros de continuación");
+        assert!(
+            m.validate_schema().is_err(),
+            "faltan los parámetros de continuación"
+        );
 
         m.doc_mut().set(
             "continuation",
@@ -669,10 +690,8 @@ mod tests {
     #[test]
     fn el_perfil_e_no_puede_ceder_la_custodia() {
         let mut m = manifiesto(&constructor());
-        m.doc_mut().set(
-            "custody",
-            Node::map(vec![("transfers", Node::Bool(true))]),
-        );
+        m.doc_mut()
+            .set("custody", Node::map(vec![("transfers", Node::Bool(true))]));
         let e = m.validate_consistency().unwrap_err();
         assert_eq!(e.clause(), Some("41.1"));
         assert!(!Profile::Delivery.may_transfer_custody());
@@ -695,8 +714,12 @@ mod tests {
         let e = m.validate_schema().unwrap_err();
         assert!(e.to_string().contains("custody.expected_return"), "{e}");
 
-        m.doc_mut().ensure_map("custody").set("expected_return", Node::str("2026-08-20"));
-        m.doc_mut().ensure_map("custody").set("grace_days", Node::Int(15));
+        m.doc_mut()
+            .ensure_map("custody")
+            .set("expected_return", Node::str("2026-08-20"));
+        m.doc_mut()
+            .ensure_map("custody")
+            .set("grace_days", Node::Int(15));
         m.validate_schema().unwrap();
         assert_eq!(m.expected_return(), Some("2026-08-20"));
         assert_eq!(m.grace_days(), 15);

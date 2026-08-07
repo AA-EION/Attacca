@@ -59,7 +59,10 @@ mod platform {
         }
         // `f_bavail` son los bloques disponibles para un proceso sin privilegios,
         // que es la cifra que corresponde a esta comprobación.
-        Some(stat.f_bavail.saturating_mul(stat.f_frsize as u64))
+        // El tipo de `f_bavail` difiere entre plataformas: u64 en Linux y
+        // u32 en macOS. La conversión es necesaria en una de las dos.
+        #[allow(clippy::unnecessary_cast)]
+        Some((stat.f_bavail as u64).saturating_mul(stat.f_frsize as u64))
     }
 
     // Declaración mínima de `statvfs`. Evita arrastrar la dependencia `libc`

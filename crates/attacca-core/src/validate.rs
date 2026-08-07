@@ -58,7 +58,10 @@ pub struct Report {
 
 impl Report {
     pub fn of(&self, severity: Severity) -> Vec<&Finding> {
-        self.findings.iter().filter(|f| f.severity == severity).collect()
+        self.findings
+            .iter()
+            .filter(|f| f.severity == severity)
+            .collect()
     }
 
     pub fn pending(&self) -> Vec<&Finding> {
@@ -84,18 +87,38 @@ impl Report {
 /// Grupos de campos y la etapa en que pasan a ser exigibles (Tabla 11B).
 const FIELD_GROUPS: &[(&str, &[&str], Option<Stage>, Level)] = &[
     // Identidad: exigible al crear el proyecto.
-    ("Identidad", &["uid", "id", "artist", "type"], None, Level::A),
+    (
+        "Identidad",
+        &["uid", "id", "artist", "type"],
+        None,
+        Level::A,
+    ),
     // Audio: la frecuencia y la profundidad son exigibles en la creación; el
     // resto, al concluir la composición.
-    ("Audio", &["audio.sample_rate", "audio.bit_depth"], None, Level::A),
     (
         "Audio",
-        &["audio.tempo", "audio.key", "audio.origin", "audio.tuning_hz"],
+        &["audio.sample_rate", "audio.bit_depth"],
+        None,
+        Level::A,
+    ),
+    (
+        "Audio",
+        &[
+            "audio.tempo",
+            "audio.key",
+            "audio.origin",
+            "audio.tuning_hz",
+        ],
         Some(Stage::Composition),
         Level::A,
     ),
     // Herramientas: al guardar la primera sesión.
-    ("Herramientas", &["tools.primary"], Some(Stage::Recording), Level::B),
+    (
+        "Herramientas",
+        &["tools.primary"],
+        Some(Stage::Recording),
+        Level::B,
+    ),
     // Personas: al concluir la grabación.
     ("Personas", &["people"], Some(Stage::Recording), Level::B),
     // Máster: al concluir el mastering.
@@ -264,7 +287,9 @@ pub fn project(manifest: &ProjectManifest) -> Report {
         });
     }
     for replica in &replicas {
-        if replica.state.requires_hold_marker() && replica.state != crate::replica::ReplicaState::Disconnected {
+        if replica.state.requires_hold_marker()
+            && replica.state != crate::replica::ReplicaState::Disconnected
+        {
             // El marcador se comprueba solo en la réplica local: las demás no
             // son accesibles desde aquí.
             let es_local = manifest.active_volume() == Some(replica.volume.as_str());
@@ -390,7 +415,10 @@ fn check_names(root: &Path, report: &mut Report) {
             });
         }
         if let Some(dir) = entry.path.parent() {
-            por_directorio.entry(dir.to_path_buf()).or_default().push(nombre);
+            por_directorio
+                .entry(dir.to_path_buf())
+                .or_default()
+                .push(nombre);
         }
     }
 
@@ -673,7 +701,11 @@ mod tests {
         let informe = project(&p);
 
         // Apartado 13.2: un campo pendiente no es una no conformidad.
-        assert!(informe.is_conformant(), "incumplimientos: {:?}", informe.breaches());
+        assert!(
+            informe.is_conformant(),
+            "incumplimientos: {:?}",
+            informe.breaches()
+        );
         assert!(!informe.pending().is_empty(), "hay campos pendientes");
         // El tempo está pendiente, no incumplido.
         let tempo = informe
@@ -690,7 +722,9 @@ mod tests {
         // El proyecto avanza: hay máster, luego el mastering ya concluyó.
         std::fs::create_dir_all(p.root().join("07_MASTER")).unwrap();
         std::fs::write(p.root().join("07_MASTER/m.wav"), b"master").unwrap();
-        p.doc_mut().ensure_map("master").set("true_peak_db", Node::Float(-1.0));
+        p.doc_mut()
+            .ensure_map("master")
+            .set("true_peak_db", Node::Float(-1.0));
         p.save().unwrap();
 
         let informe = project(&p);
@@ -729,14 +763,19 @@ mod tests {
         p.save().unwrap();
         let informe = project(&p);
         assert!(!informe.is_conformant());
-        assert!(informe.breaches().iter().any(|f| f.subject.contains("exceptions")));
+        assert!(informe
+            .breaches()
+            .iter()
+            .any(|f| f.subject.contains("exceptions")));
     }
 
     #[test]
     fn detecta_el_marcador_de_custodia_ausente_o_sobrante() {
         let (_d, _r, mut p) = entorno();
         // Estado cedida sin marcador.
-        p.doc_mut().ensure_map("custody").set("state", Node::str("cedida"));
+        p.doc_mut()
+            .ensure_map("custody")
+            .set("state", Node::str("cedida"));
         p.save().unwrap();
         let informe = project(&p);
         assert!(informe
@@ -745,9 +784,15 @@ mod tests {
             .any(|f| f.clause == "14.3.3" && f.detail.contains("no existe el marcador")));
 
         // Estado propia con marcador presente.
-        p.doc_mut().ensure_map("custody").set("state", Node::str("propia"));
+        p.doc_mut()
+            .ensure_map("custody")
+            .set("state", Node::str("propia"));
         p.save().unwrap();
-        std::fs::write(p.root().join(crate::manifest::CUSTODY_LOCK_FILE), b"STAVE CUSTODY LOCK\nestado: cedida\n").unwrap();
+        std::fs::write(
+            p.root().join(crate::manifest::CUSTODY_LOCK_FILE),
+            b"STAVE CUSTODY LOCK\nestado: cedida\n",
+        )
+        .unwrap();
         let informe = project(&p);
         assert!(informe
             .breaches()
@@ -758,7 +803,9 @@ mod tests {
     #[test]
     fn el_manifiesto_prevalece_sobre_el_marcador() {
         let (_d, _r, mut p) = entorno();
-        p.doc_mut().ensure_map("custody").set("state", Node::str("cedida"));
+        p.doc_mut()
+            .ensure_map("custody")
+            .set("state", Node::str("cedida"));
         p.save().unwrap();
         crate::manifest::custody_lock::write_marker(
             p.root(),
@@ -845,25 +892,43 @@ mod tests {
     #[test]
     fn la_entrega_se_bloquea_con_autorizaciones_pendientes() {
         let (_d, _r, mut p) = entorno();
-        p.record_source("01_REF/muestra.wav", "Biblioteca", None, "INTERNO", None, None, "pending");
+        p.record_source(
+            "01_REF/muestra.wav",
+            "Biblioteca",
+            None,
+            "INTERNO",
+            None,
+            None,
+            "pending",
+        );
         p.save().unwrap();
         let h = ready_for_delivery(&p);
-        assert!(h.iter().any(|f| f.clause == "12.2" && f.severity == Severity::Breach));
+        assert!(h
+            .iter()
+            .any(|f| f.clause == "12.2" && f.severity == Severity::Breach));
     }
 
     #[test]
     fn el_release_no_se_cierra_con_un_tema_ausente_o_sin_control_de_calidad() {
         let (_d, _r, p) = entorno();
-        let mut rel = crate::manifest::release::ReleaseManifest::new(
-            std::path::Path::new("_RELEASE/RELEASE.yaml"),
-        );
+        let mut rel = crate::manifest::release::ReleaseManifest::new(std::path::Path::new(
+            "_RELEASE/RELEASE.yaml",
+        ));
         *rel.doc_mut() = crate::manifest::release::scaffold(
-            "R", "2026-08-06_D_ALBUM", "D", "A",
-            crate::manifest::release::ReleaseClass::Album, Level::C, "Estudio A", "J. Duarte",
+            "R",
+            "2026-08-06_D_ALBUM",
+            "D",
+            "A",
+            crate::manifest::release::ReleaseClass::Album,
+            Level::C,
+            "Estudio A",
+            "J. Duarte",
         );
-        rel.link_project("UID-FALTANTE", "id", "Tema ausente", Some(1)).unwrap();
+        rel.link_project("UID-FALTANTE", "id", "Tema ausente", Some(1))
+            .unwrap();
         let uid = p.uid().unwrap().to_string();
-        rel.link_project(&uid, p.id().unwrap(), "Tema presente", Some(2)).unwrap();
+        rel.link_project(&uid, p.id().unwrap(), "Tema presente", Some(2))
+            .unwrap();
 
         let h = release_ready(&rel, &[(uid, p)]);
         // Falta un tema del tracklist.
@@ -875,7 +940,9 @@ mod tests {
     #[test]
     fn un_proyecto_cedido_no_puede_archivarse() {
         let (_d, _r, mut p) = entorno();
-        p.doc_mut().ensure_map("custody").set("state", Node::str("cedida"));
+        p.doc_mut()
+            .ensure_map("custody")
+            .set("state", Node::str("cedida"));
         p.save().unwrap();
         let h = ready_for_archival(&p);
         assert!(h.iter().any(|f| f.clause == "14.3.5"));
@@ -889,7 +956,10 @@ mod tests {
         cust.set(
             "transfer",
             Node::map(vec![
-                ("expected_return", Node::str(crate::clock::add_days(&crate::clock::today(), -40).unwrap())),
+                (
+                    "expected_return",
+                    Node::str(crate::clock::add_days(&crate::clock::today(), -40).unwrap()),
+                ),
                 ("grace_days", Node::Int(15)),
             ]),
         );

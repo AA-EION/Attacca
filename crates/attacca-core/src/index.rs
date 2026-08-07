@@ -131,7 +131,11 @@ impl Index {
                     id: m.id().unwrap_or_default().to_string(),
                     title: m.title().unwrap_or_default().to_string(),
                     artist: m.artist().unwrap_or_default().to_string(),
-                    class: m.class().map(|c| c.as_str()).unwrap_or_default().to_string(),
+                    class: m
+                        .class()
+                        .map(|c| c.as_str())
+                        .unwrap_or_default()
+                        .to_string(),
                     status: m.status().as_str().to_string(),
                     track_count: m.tracklist().len(),
                     path: manifest_path.clone(),
@@ -339,10 +343,8 @@ mod tests {
 
     #[test]
     fn un_manifiesto_ilegible_se_declara_sin_ocultarse() {
-        let (dir, repo) = entorno(1);
-        let roto = repo
-            .domain("20_PROJECTS")
-            .join("0_IDEAS/proyecto-roto");
+        let (_dir, repo) = entorno(1);
+        let roto = repo.domain("20_PROJECTS").join("0_IDEAS/proyecto-roto");
         std::fs::create_dir_all(&roto).unwrap();
         std::fs::write(roto.join("PROJECT.yaml"), b"esto: [no cierra\n").unwrap();
 
@@ -374,7 +376,7 @@ mod tests {
     #[test]
     fn localiza_por_identificador_interno_y_filtra_por_custodia() {
         let (dir, repo) = entorno(3);
-        let (mut index, _) = Index::load_or_rebuild(&repo, &dir.path().to_path_buf()).unwrap();
+        let (mut index, _) = Index::load_or_rebuild(&repo, dir.path()).unwrap();
         let uid = index.projects[0].uid.clone();
         assert!(index.find_project(&uid).is_some());
         assert!(index.find_project("NOEXISTE").is_none());

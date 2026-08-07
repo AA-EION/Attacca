@@ -185,7 +185,10 @@ impl ProjectManifest {
                 ),
             ));
         }
-        self.0.doc.ensure_map("stave").set("level", Node::str(level.as_str()));
+        self.0
+            .doc
+            .ensure_map("stave")
+            .set("level", Node::str(level.as_str()));
         Ok(())
     }
 
@@ -270,7 +273,11 @@ impl ProjectManifest {
             .doc
             .at("custody.history")
             .and_then(|n| n.as_seq())
-            .map(|s| s.iter().filter_map(crate::custody::ChronologyEntry::from_node).collect())
+            .map(|s| {
+                s.iter()
+                    .filter_map(crate::custody::ChronologyEntry::from_node)
+                    .collect()
+            })
             .unwrap_or_default();
         entries.sort_by_key(|e| e.seq);
         entries
@@ -446,10 +453,7 @@ pub fn scaffold(
     );
     doc.set(
         "preservation",
-        Node::map(vec![
-            ("manifest", Node::Null),
-            ("verified", Node::Null),
-        ]),
+        Node::map(vec![("manifest", Node::Null), ("verified", Node::Null)]),
     );
 
     // El grupo Custodia es exigible en la creación (Tabla 11B).
@@ -497,12 +501,24 @@ mod tests {
     fn la_creacion_escribe_los_pendientes_en_nulo_explicito() {
         let doc = manifiesto_base();
         // Exigibles en la creación.
-        assert_eq!(doc.get("uid").unwrap().as_str(), Some("01J9ZQ8F3K7N2VYB4T6XM0RSAE"));
+        assert_eq!(
+            doc.get("uid").unwrap().as_str(),
+            Some("01J9ZQ8F3K7N2VYB4T6XM0RSAE")
+        );
         assert_eq!(doc.at("audio.sample_rate").unwrap().as_int(), Some(48000));
         assert_eq!(doc.at("custody.state").unwrap().as_str(), Some("propia"));
         // Pendientes: presentes y nulos, nunca ausentes (apartado 13.2).
-        for ruta in ["audio.tempo", "audio.key", "audio.origin", "master.lufs_i", "rights.isrc", "preservation.manifest"] {
-            let n = doc.at(ruta).unwrap_or_else(|| panic!("{ruta} está ausente"));
+        for ruta in [
+            "audio.tempo",
+            "audio.key",
+            "audio.origin",
+            "master.lufs_i",
+            "rights.isrc",
+            "preservation.manifest",
+        ] {
+            let n = doc
+                .at(ruta)
+                .unwrap_or_else(|| panic!("{ruta} está ausente"));
             assert!(n.is_null(), "{ruta} debería ser nulo explícito");
         }
     }
@@ -551,7 +567,10 @@ mod tests {
         let hist = m.doc().get("id_history").unwrap().as_seq().unwrap();
         assert_eq!(hist.len(), 1);
         let e = hist[0].as_map().unwrap();
-        assert_eq!(e.get("previous").unwrap().as_str(), Some("2026-08-06_Tema-Viejo_ORIG"));
+        assert_eq!(
+            e.get("previous").unwrap().as_str(),
+            Some("2026-08-06_Tema-Viejo_ORIG")
+        );
         assert!(crate::clock::parse_rfc3339(e.get("changed").unwrap().as_str().unwrap()).is_ok());
     }
 

@@ -21,7 +21,11 @@ pub fn set_file_readonly(path: &Path, readonly: bool) -> Result<()> {
         let mode = perms.mode();
         // Se retiran o restituyen los bits de escritura conservando el resto,
         // incluidos los de ejecución de los directorios.
-        let nuevo = if readonly { mode & !0o222 } else { mode | 0o200 };
+        let nuevo = if readonly {
+            mode & !0o222
+        } else {
+            mode | 0o200
+        };
         perms.set_mode(nuevo);
     }
     #[cfg(not(unix))]
@@ -179,9 +183,15 @@ mod tests {
 
         // El material sigue siendo legible: el apartado 14.3.3 lo exige.
         assert_eq!(fs::read(sub.join("sesion.txt")).unwrap(), b"datos");
-        assert!(fs::metadata(sub.join("sesion.txt")).unwrap().permissions().readonly());
+        assert!(fs::metadata(sub.join("sesion.txt"))
+            .unwrap()
+            .permissions()
+            .readonly());
         // El manifiesto excluido sigue admitiendo escritura.
-        assert!(!fs::metadata(dir.path().join("PROJECT.yaml")).unwrap().permissions().readonly());
+        assert!(!fs::metadata(dir.path().join("PROJECT.yaml"))
+            .unwrap()
+            .permissions()
+            .readonly());
 
         set_tree_readonly(dir.path(), false, &[]).unwrap();
         assert!(fs::write(sub.join("sesion.txt"), b"otros").is_ok());
@@ -194,7 +204,11 @@ mod tests {
         let restos: Vec<_> = fs::read_dir(dir.path())
             .unwrap()
             .flatten()
-            .filter(|e| e.file_name().to_string_lossy().starts_with(".attacca-probe"))
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with(".attacca-probe")
+            })
             .collect();
         assert!(restos.is_empty(), "la sonda dejó {} archivos", restos.len());
         // En un sistema de archivos corriente de Linux ambas capacidades se

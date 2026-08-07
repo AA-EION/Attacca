@@ -90,7 +90,11 @@ impl Payload {
     pub fn for_profile(profile: Profile) -> Payload {
         match profile {
             Profile::Delivery => Payload {
-                content_dirs: vec!["07_MASTER".into(), "00_ADMIN/Credits".into(), "00_ADMIN/Art".into()],
+                content_dirs: vec![
+                    "07_MASTER".into(),
+                    "00_ADMIN/Credits".into(),
+                    "00_ADMIN/Art".into(),
+                ],
                 rights_files: vec![],
             },
             Profile::Production => Payload {
@@ -287,7 +291,10 @@ pub fn emit(
         recipient_contact: shipment.recipient_contact.clone(),
         purpose: shipment.purpose.clone(),
         projects: vec![project_uid.clone()],
-        releases: project.release_uid().map(|r| vec![r.to_string()]).unwrap_or_default(),
+        releases: project
+            .release_uid()
+            .map(|r| vec![r.to_string()])
+            .unwrap_or_default(),
         file_count: file_count as i64,
         total_bytes: total_bytes as i64,
         signature: firma.clone(),
@@ -317,12 +324,27 @@ pub fn emit(
                 ("bit_depth", Node::opt_int(project.bit_depth())),
                 (
                     "tuning_hz",
-                    project.doc().at("audio.tuning_hz").cloned().unwrap_or(Node::Int(440)),
+                    project
+                        .doc()
+                        .at("audio.tuning_hz")
+                        .cloned()
+                        .unwrap_or(Node::Int(440)),
                 ),
-                ("tempo", project.doc().at("audio.tempo").cloned().unwrap_or(Node::Null)),
+                (
+                    "tempo",
+                    project
+                        .doc()
+                        .at("audio.tempo")
+                        .cloned()
+                        .unwrap_or(Node::Null),
+                ),
                 (
                     "origin",
-                    project.doc().at("audio.origin").cloned().unwrap_or(Node::Null),
+                    project
+                        .doc()
+                        .at("audio.origin")
+                        .cloned()
+                        .unwrap_or(Node::Null),
                 ),
                 (
                     "vocabulary_frozen",
@@ -357,7 +379,10 @@ pub fn emit(
                     "supersedes_transfer",
                     Node::opt_str(shipment.supersedes_transfer.as_deref()),
                 ),
-                ("expected_return", Node::opt_str(shipment.expected_return.as_deref())),
+                (
+                    "expected_return",
+                    Node::opt_str(shipment.expected_return.as_deref()),
+                ),
                 ("grace_days", Node::Int(shipment.grace_days)),
                 ("onward_allowed", Node::Bool(shipment.onward_allowed)),
                 (
@@ -375,7 +400,10 @@ pub fn emit(
     if shipment.transfers_custody {
         let lock = CustodyLock {
             state: CustodyState::Ceded,
-            holder: format!("{} / {}", shipment.recipient_org, shipment.recipient_contact),
+            holder: format!(
+                "{} / {}",
+                shipment.recipient_org, shipment.recipient_contact
+            ),
             ceded_by: format!("{} / {actor}", shipment.issuer_org),
             shipment_id: shipment_id.clone(),
             ceded_at: issued.clone(),
@@ -386,7 +414,10 @@ pub fn emit(
     } else if shipment.returns_custody {
         let lock = CustodyLock {
             state: CustodyState::Own,
-            holder: format!("{} / {}", shipment.recipient_org, shipment.recipient_contact),
+            holder: format!(
+                "{} / {}",
+                shipment.recipient_org, shipment.recipient_contact
+            ),
             ceded_by: format!("{} / {actor}", shipment.issuer_org),
             shipment_id: shipment_id.clone(),
             ceded_at: issued.clone(),
@@ -515,13 +546,19 @@ pub fn emit(
         fsx::readonly::set_tree_readonly(
             project.root(),
             true,
-            &[crate::manifest::PROJECT_FILE, crate::manifest::CUSTODY_LOCK_FILE],
+            &[
+                crate::manifest::PROJECT_FILE,
+                crate::manifest::CUSTODY_LOCK_FILE,
+            ],
         )?;
         custody_lock::write_marker(
             project.root(),
             &CustodyLock {
                 state: CustodyState::InTransit,
-                holder: format!("{} / {}", shipment.recipient_org, shipment.recipient_contact),
+                holder: format!(
+                    "{} / {}",
+                    shipment.recipient_org, shipment.recipient_contact
+                ),
                 ceded_by: format!("{} / {actor}", shipment.issuer_org),
                 shipment_id: shipment_id.clone(),
                 ceded_at: issued.clone(),
@@ -613,7 +650,11 @@ fn copy_payload(
 
     // El perfil `A` incluye el proyecto archivado completo (Tabla 28).
     if payload.content_dirs.is_empty() && *profile == Profile::Archive {
-        copiados += fsx::copy_tree(project_root, &pkg.content(), &["08_DELIVERY", "09_TRANSFER"])?;
+        copiados += fsx::copy_tree(
+            project_root,
+            &pkg.content(),
+            &["08_DELIVERY", "09_TRANSFER"],
+        )?;
     } else {
         for dir in &payload.content_dirs {
             let origen = project_root.join(dir);
@@ -727,14 +768,21 @@ mod tests {
         std::fs::create_dir_all(p.root().join("07_MASTER")).unwrap();
         std::fs::write(p.root().join("07_MASTER/master.wav"), b"audio del master").unwrap();
         std::fs::create_dir_all(p.root().join("00_ADMIN/Credits")).unwrap();
-        std::fs::write(p.root().join("00_ADMIN/Credits/creditos.csv"), b"rol,nombre\n").unwrap();
+        std::fs::write(
+            p.root().join("00_ADMIN/Credits/creditos.csv"),
+            b"rol,nombre\n",
+        )
+        .unwrap();
         // La composición y la grabación han concluido: los parámetros de audio
         // quedan fijados y el proyecto puede emitirse en perfil P.
         let audio = p.doc_mut().ensure_map("audio");
         audio.set("tempo", crate::doc::Node::Int(96));
         audio.set("key", crate::doc::Node::str("Db major"));
         audio.set("origin", crate::doc::Node::str("00:00:00:00"));
-        p.doc_mut().set("vocabulary", crate::doc::Node::map(vec![("frozen", crate::doc::Node::Bool(true))]));
+        p.doc_mut().set(
+            "vocabulary",
+            crate::doc::Node::map(vec![("frozen", crate::doc::Node::Bool(true))]),
+        );
         p.save().unwrap();
         (dir, repo, p)
     }
@@ -779,8 +827,19 @@ mod tests {
 
     fn emitir(repo: &Repository, p: &mut ProjectManifest, s: &Shipment) -> Result<Emission> {
         let (mut prog, canc) = container::silent_progress();
-        let mut pr = Progress { on_progress: &mut prog, cancelled: &canc };
-        emit(repo, "J. Duarte", p, s, &Payload::for_profile(s.profile), sincronizado(), &mut pr)
+        let mut pr = Progress {
+            on_progress: &mut prog,
+            cancelled: &canc,
+        };
+        emit(
+            repo,
+            "J. Duarte",
+            p,
+            s,
+            &Payload::for_profile(s.profile),
+            sincronizado(),
+            &mut pr,
+        )
     }
 
     #[test]
@@ -796,13 +855,21 @@ mod tests {
         assert!(e.frozen_copy.to_string_lossy().contains("08_DELIVERY"));
         let m = e.frozen_copy.join("EXCHANGE.yaml");
         assert!(std::fs::metadata(&m).unwrap().permissions().readonly());
-        assert!(std::fs::metadata(&e.artifact).unwrap().permissions().readonly());
+        assert!(std::fs::metadata(&e.artifact)
+            .unwrap()
+            .permissions()
+            .readonly());
 
         // El manifiesto del proyecto registra la entrega.
         let entregas = p.doc().get("deliveries").unwrap().as_seq().unwrap();
         assert_eq!(entregas.len(), 1);
         assert_eq!(
-            entregas[0].as_map().unwrap().get("shipment_id").unwrap().as_str(),
+            entregas[0]
+                .as_map()
+                .unwrap()
+                .get("shipment_id")
+                .unwrap()
+                .as_str(),
             Some(e.shipment_id.as_str())
         );
 
@@ -845,20 +912,44 @@ mod tests {
     fn sin_reloj_sincronizado_no_se_emite() {
         let (_d, repo, mut p) = entorno();
         let (mut prog, canc) = container::silent_progress();
-        let mut pr = Progress { on_progress: &mut prog, cancelled: &canc };
+        let mut pr = Progress {
+            on_progress: &mut prog,
+            cancelled: &canc,
+        };
         let s = envio();
-        let err = emit(&repo, "a", &mut p, &s, &Payload::for_profile(s.profile), SyncState::Unavailable, &mut pr).unwrap_err();
+        let err = emit(
+            &repo,
+            "a",
+            &mut p,
+            &s,
+            &Payload::for_profile(s.profile),
+            SyncState::Unavailable,
+            &mut pr,
+        )
+        .unwrap_err();
         assert_eq!(err.clause(), Some("22.3.1"));
     }
 
     #[test]
     fn una_autorizacion_pendiente_bloquea_los_perfiles_e_y_a() {
         let (_d, repo, mut p) = entorno();
-        p.record_source("01_REF/muestra.wav", "Biblioteca", None, "INTERNO", None, None, "pending");
+        p.record_source(
+            "01_REF/muestra.wav",
+            "Biblioteca",
+            None,
+            "INTERNO",
+            None,
+            None,
+            "pending",
+        );
         p.save().unwrap();
 
         let err = emitir(&repo, &mut p, &envio()).unwrap_err();
-        assert!(err.to_string().contains("autorizaciones de terceros sin resolver"), "{err}");
+        assert!(
+            err.to_string()
+                .contains("autorizaciones de terceros sin resolver"),
+            "{err}"
+        );
 
         let mut s = envio();
         s.profile = Profile::Archive;
@@ -869,8 +960,19 @@ mod tests {
         s.profile = Profile::Production;
         let e = emitir(&repo, &mut p, &s).unwrap();
         let m = ExchangeManifest::load(e.frozen_copy.join("EXCHANGE.yaml")).unwrap();
-        assert_eq!(m.doc().at("rights.clearances").unwrap().as_str(), Some("partial"));
-        assert_eq!(m.doc().at("rights.pending").unwrap().as_seq().unwrap().len(), 1);
+        assert_eq!(
+            m.doc().at("rights.clearances").unwrap().as_str(),
+            Some("partial")
+        );
+        assert_eq!(
+            m.doc()
+                .at("rights.pending")
+                .unwrap()
+                .as_seq()
+                .unwrap()
+                .len(),
+            1
+        );
         m.validate_schema().unwrap();
     }
 
@@ -958,7 +1060,13 @@ mod tests {
         s.serialize = false;
         let e = emitir(&repo, &mut p, &s).unwrap();
         assert!(e.artifact.is_dir());
-        for archivo in ["bagit.txt", "EXCHANGE.yaml", "LEEME.txt", "manifest-sha256.txt", "tagmanifest-sha256.txt"] {
+        for archivo in [
+            "bagit.txt",
+            "EXCHANGE.yaml",
+            "LEEME.txt",
+            "manifest-sha256.txt",
+            "tagmanifest-sha256.txt",
+        ] {
             assert!(e.artifact.join(archivo).is_file(), "falta {archivo}");
         }
         let m = ExchangeManifest::load(e.artifact.join("EXCHANGE.yaml")).unwrap();
@@ -971,9 +1079,18 @@ mod tests {
         std::fs::write(p.root().join("07_MASTER/.DS_Store"), b"basura").unwrap();
         std::fs::write(p.root().join("07_MASTER/master.wav.asd"), b"analisis").unwrap();
         let e = emitir(&repo, &mut p, &envio()).unwrap();
-        assert!(!e.frozen_copy.join("data/content/07_MASTER/.DS_Store").exists());
-        assert!(!e.frozen_copy.join("data/content/07_MASTER/master.wav.asd").exists());
-        assert!(e.frozen_copy.join("data/content/07_MASTER/master.wav").is_file());
+        assert!(!e
+            .frozen_copy
+            .join("data/content/07_MASTER/.DS_Store")
+            .exists());
+        assert!(!e
+            .frozen_copy
+            .join("data/content/07_MASTER/master.wav.asd")
+            .exists());
+        assert!(e
+            .frozen_copy
+            .join("data/content/07_MASTER/master.wav")
+            .is_file());
     }
 
     #[test]
@@ -981,14 +1098,19 @@ mod tests {
         let (_d, repo, mut p) = entorno();
         // El punto temporal de origen vuelve a estar pendiente: la composición
         // no ha concluido.
-        p.doc_mut().ensure_map("audio").set("origin", crate::doc::Node::Null);
+        p.doc_mut()
+            .ensure_map("audio")
+            .set("origin", crate::doc::Node::Null);
         p.save().unwrap();
 
         let mut s = envio();
         s.profile = Profile::Production;
         let err = emitir(&repo, &mut p, &s).unwrap_err();
         assert_eq!(err.clause(), Some("31.3"));
-        assert!(err.to_string().contains("punto temporal de origen"), "{err}");
+        assert!(
+            err.to_string().contains("punto temporal de origen"),
+            "{err}"
+        );
         assert!(err.to_string().contains("no se ha emitido"), "{err}");
         assert_eq!(missing_continuation(&p), vec!["punto temporal de origen"]);
     }
@@ -1000,7 +1122,10 @@ mod tests {
         let reales = fsx::walk::conserved_files(&e.frozen_copy.join("data"));
         let m = ExchangeManifest::load(e.frozen_copy.join("EXCHANGE.yaml")).unwrap();
         assert_eq!(m.file_count(), Some(reales.len() as i64));
-        assert_eq!(m.total_bytes(), Some(fsx::walk::total_bytes(&reales) as i64));
+        assert_eq!(
+            m.total_bytes(),
+            Some(fsx::walk::total_bytes(&reales) as i64)
+        );
         // El extracto del registro se cuenta como parte de la carga.
         assert!(reales.iter().any(|x| x.relative == "log/EXCHANGE.jsonl"));
     }

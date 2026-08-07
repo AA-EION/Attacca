@@ -98,7 +98,9 @@ mod tests {
         assert_eq!(uid.len(), 26, "{uid}");
         assert!(is_uid(&uid), "{uid}");
         // Regla 4 de la Tabla 9: solo caracteres del conjunto admitido.
-        assert!(uid.bytes().all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()));
+        assert!(uid
+            .bytes()
+            .all(|b| b.is_ascii_uppercase() || b.is_ascii_digit()));
     }
 
     #[test]

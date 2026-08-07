@@ -3,7 +3,9 @@
 //! Cada orden es una operación del núcleo. La interfaz no toma decisiones
 //! normativas: consulta, presenta y transmite.
 
-use crate::estado::{self, Conformidad, Entrada, Estado, Identidad, ProyectoResumen, VistaProyecto};
+use crate::estado::{
+    self, Conformidad, Entrada, Estado, Identidad, ProyectoResumen, VistaProyecto,
+};
 use attacca_core::clock::{self, SyncState};
 use attacca_core::manifest::exchange::{Classification, Profile};
 use attacca_core::manifest::project::{Level, ProjectManifest, Status};
@@ -259,8 +261,9 @@ pub fn cambiar_titulo(estado: State<Estado>, uid: String, titulo: String) -> R<V
 pub fn cambiar_estado(estado: State<Estado>, uid: String, nuevo: String) -> R<VistaProyecto> {
     let repo = estado.repositorio()?;
     let mut m = cargar(&estado, &uid)?;
-    let s = Status::parse(&nuevo)
-        .ok_or_else(|| format!("El estado «{nuevo}» no es admisible. El proyecto no se ha modificado."))?;
+    let s = Status::parse(&nuevo).ok_or_else(|| {
+        format!("El estado «{nuevo}» no es admisible. El proyecto no se ha modificado.")
+    })?;
     project::set_status(&repo, &estado.actor(), &mut m, s).map_err(err)?;
     Ok(estado::vista_de(&m))
 }
@@ -463,7 +466,11 @@ pub fn listar_carpeta(estado: State<Estado>, uid: String, relativa: String) -> R
             })
         })
         .collect();
-    out.sort_by(|a, b| b.es_carpeta.cmp(&a.es_carpeta).then(a.nombre.cmp(&b.nombre)));
+    out.sort_by(|a, b| {
+        b.es_carpeta
+            .cmp(&a.es_carpeta)
+            .then(a.nombre.cmp(&b.nombre))
+    });
     Ok(out)
 }
 
@@ -529,7 +536,10 @@ pub fn crear_release(estado: State<Estado>, datos: DatosRelease) -> R<String> {
     let repo = estado.repositorio()?;
     let identidad = estado.identidad();
     let clase = ReleaseClass::parse(&datos.clase).ok_or_else(|| {
-        format!("La clase «{}» no figura en la Tabla 8. El release no se ha creado.", datos.clase)
+        format!(
+            "La clase «{}» no figura en la Tabla 8. El release no se ha creado.",
+            datos.clase
+        )
     })?;
     let actor = identidad.persona.clone();
     let m = release::create(
@@ -556,8 +566,11 @@ pub fn vincular_a_release(
     posicion: Option<i64>,
 ) -> R<i64> {
     let repo = estado.repositorio()?;
-    let ruta = release::find_by_uid(&repo, &release_uid)
-        .ok_or_else(|| format!("No existe ningún release con identificador {release_uid}. No se ha vinculado nada."))?;
+    let ruta = release::find_by_uid(&repo, &release_uid).ok_or_else(|| {
+        format!(
+            "No existe ningún release con identificador {release_uid}. No se ha vinculado nada."
+        )
+    })?;
     let mut r = attacca_core::manifest::release::ReleaseManifest::load(&ruta).map_err(err)?;
     let mut p = cargar(&estado, &proyecto_uid)?;
     release::link_project(&repo, &estado.actor(), &mut r, &mut p, posicion).map_err(err)
@@ -610,8 +623,9 @@ pub fn emitir_envio(estado: State<Estado>, uid: String, datos: DatosEnvio) -> R<
     let repo = estado.repositorio()?;
     let mut m = cargar(&estado, &uid)?;
     let identidad = estado.identidad();
-    let perfil = Profile::parse(&datos.perfil)
-        .ok_or_else(|| "El perfil declarado no es admisible. El envío no se ha emitido.".to_string())?;
+    let perfil = Profile::parse(&datos.perfil).ok_or_else(|| {
+        "El perfil declarado no es admisible. El envío no se ha emitido.".to_string()
+    })?;
     let clasificacion = Classification::parse(&datos.clasificacion).ok_or_else(|| {
         "El nivel de clasificación no es admisible. El envío no se ha emitido.".to_string()
     })?;
@@ -648,15 +662,18 @@ pub fn emitir_envio(estado: State<Estado>, uid: String, datos: DatosEnvio) -> R<
         qc_approved: datos.control_aprobado,
     };
 
-    let sync = estado
-        .reloj()
-        .unwrap_or_else(|| clock::check_sync(clock::DEFAULT_SOURCES, std::time::Duration::from_secs(4)));
+    let sync = estado.reloj().unwrap_or_else(|| {
+        clock::check_sync(clock::DEFAULT_SOURCES, std::time::Duration::from_secs(4))
+    });
 
     estado.reiniciar_cancelacion();
     let bandera = estado.bandera_cancelacion();
     let cancelado = move || bandera.load(Ordering::Relaxed);
     let mut avance = |_: usize, _: usize| {};
-    let mut progreso = Progress { on_progress: &mut avance, cancelled: &cancelado };
+    let mut progreso = Progress {
+        on_progress: &mut avance,
+        cancelled: &cancelado,
+    };
 
     let e = emit::emit(
         &repo,
@@ -702,17 +719,17 @@ pub struct DatosRecepcion {
 }
 
 #[tauri::command]
-pub fn verificar_paquete(
-    estado: State<Estado>,
-    datos: DatosRecepcion,
-) -> R<ResultadoVerificacion> {
+pub fn verificar_paquete(estado: State<Estado>, datos: DatosRecepcion) -> R<ResultadoVerificacion> {
     let repo = estado.repositorio()?;
     let ctx = contexto(&estado, &datos.emisor, datos.condiciones_aceptables);
     estado.reiniciar_cancelacion();
     let bandera = estado.bandera_cancelacion();
     let cancelado = move || bandera.load(Ordering::Relaxed);
     let mut avance = |_: usize, _: usize| {};
-    let mut progreso = Progress { on_progress: &mut avance, cancelled: &cancelado };
+    let mut progreso = Progress {
+        on_progress: &mut avance,
+        cancelled: &cancelado,
+    };
 
     let v = ingest::verify(
         &repo,
@@ -777,14 +794,17 @@ pub fn ingerir_paquete(estado: State<Estado>, datos: DatosIngesta) -> R<Resultad
     let bandera = estado.bandera_cancelacion();
     let cancelado = move || bandera.load(Ordering::Relaxed);
     let mut avance = |_: usize, _: usize| {};
-    let mut progreso = Progress { on_progress: &mut avance, cancelled: &cancelado };
+    let mut progreso = Progress {
+        on_progress: &mut avance,
+        cancelled: &cancelado,
+    };
 
     let paquete = PathBuf::from(&datos.paquete);
     let v = ingest::verify(&repo, &estado.actor(), &paquete, &ctx, &mut progreso).map_err(err)?;
 
-    let sync = estado
-        .reloj()
-        .unwrap_or_else(|| clock::check_sync(clock::DEFAULT_SOURCES, std::time::Duration::from_secs(4)));
+    let sync = estado.reloj().unwrap_or_else(|| {
+        clock::check_sync(clock::DEFAULT_SOURCES, std::time::Duration::from_secs(4))
+    });
     let ruta_acuse = repo
         .root()
         .join(format!("00_SYSTEM/acuse_{}.yaml", v.shipment_id));

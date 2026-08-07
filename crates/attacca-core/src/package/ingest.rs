@@ -16,7 +16,9 @@ use crate::integrity;
 use crate::manifest::custody_lock;
 use crate::manifest::exchange::{ExchangeManifest, Profile};
 use crate::manifest::project::ProjectManifest;
-use crate::manifest::receipt::{self, CustodyAcceptance, Outcome, Receipt, ReceiptResult, VerificationSet};
+use crate::manifest::receipt::{
+    self, CustodyAcceptance, Outcome, Receipt, ReceiptResult, VerificationSet,
+};
 use crate::repo::Repository;
 use serde_json::json;
 use std::path::{Path, PathBuf};
@@ -168,9 +170,7 @@ pub fn verify(
 
             // Verificación 1: procedencia.
             let emisor = m.issuer_org().unwrap_or_default();
-            checks.provenance = Outcome::from_bool(
-                ctx.agreed_parties.iter().any(|p| p == emisor),
-            );
+            checks.provenance = Outcome::from_bool(ctx.agreed_parties.iter().any(|p| p == emisor));
             if checks.provenance.failed() {
                 discrepancies.push((
                     "provenance".into(),
@@ -199,7 +199,10 @@ pub fn verify(
                         } else {
                             "la identidad de firma no está declarada en el acuerdo de intercambio"
                         };
-                        discrepancies.push(("authenticity".into(), format!("El envío se rechaza: {motivo}.")));
+                        discrepancies.push((
+                            "authenticity".into(),
+                            format!("El envío se rechaza: {motivo}."),
+                        ));
                     }
                 }
             }
@@ -207,7 +210,9 @@ pub fn verify(
             // Verificación 7: perfil y versión.
             let version = m.stave_version().unwrap_or_default();
             let version_ok = ctx.supported_versions.iter().any(|v| v == version);
-            let perfil_ok = profile.map(|p| ctx.supported_profiles.contains(&p)).unwrap_or(false);
+            let perfil_ok = profile
+                .map(|p| ctx.supported_profiles.contains(&p))
+                .unwrap_or(false);
             checks.profile_supported = Outcome::from_bool(version_ok && perfil_ok);
             if checks.profile_supported.failed() {
                 discrepancies.push((
@@ -223,7 +228,8 @@ pub fn verify(
                 if m.transfers_custody() {
                     if m.expected_return().is_none() {
                         ok = false;
-                        motivo = "el envío cede la custodia y no declara fecha esperada de retorno".into();
+                        motivo = "el envío cede la custodia y no declara fecha esperada de retorno"
+                            .into();
                     } else if m.grace_days() <= 0 {
                         ok = false;
                         motivo = "el envío cede la custodia y no declara plazo de gracia".into();
@@ -234,7 +240,8 @@ pub fn verify(
                 }
                 checks.custody = Outcome::from_bool(ok);
                 if !ok {
-                    discrepancies.push(("custody".into(), format!("La cesión se rechaza: {motivo}.")));
+                    discrepancies
+                        .push(("custody".into(), format!("La cesión se rechaza: {motivo}.")));
                 }
             } else {
                 checks.custody = Outcome::NotApplicable;
@@ -304,7 +311,9 @@ pub fn verify(
                 "content_integrity".into(),
                 format!(
                     "La verificación de integridad falló en {} de {} archivos: {}.",
-                    pv.payload_missing.len() + pv.payload_mismatched.len() + pv.payload_undeclared.len(),
+                    pv.payload_missing.len()
+                        + pv.payload_mismatched.len()
+                        + pv.payload_undeclared.len(),
                     pv.payload_checked,
                     pv.failed_paths().join(", ")
                 ),
@@ -356,7 +365,10 @@ pub fn verify(
             }
 
             // Verificación 13: conformidad estructural de `data/content/`.
-            checks.structure = Outcome::from_bool(check_structure(&dir.join("data/content"), &mut discrepancies));
+            checks.structure = Outcome::from_bool(check_structure(
+                &dir.join("data/content"),
+                &mut discrepancies,
+            ));
 
             // Verificación 14: las comprobaciones que el emisor declara esperar.
             let esperadas = m.expected_checks();
@@ -482,7 +494,9 @@ fn check_structure(content: &Path, discrepancies: &mut Vec<(String, String)>) ->
     ));
     false
 }
-
+// El Anexo B fija los campos de este artefacto; agruparlos en una
+// estructura intermedia solo desplazaría la lista.
+#[allow(clippy::too_many_arguments)]
 /// Emite el acuse de recibo (apartado 38).
 ///
 /// Se emite con independencia de que el resultado sea la aceptación o el
@@ -623,7 +637,10 @@ pub fn ingest(
             // El material recibido va a `01_REF` del proyecto de destino y
             // permanece en solo lectura (apartado 7.3 y Tabla 32).
             let p = target_project.as_ref().unwrap();
-            (p.root().join("01_REF").join(&verification.shipment_id), "01_REF".to_string())
+            (
+                p.root().join("01_REF").join(&verification.shipment_id),
+                "01_REF".to_string(),
+            )
         }
         (Profile::Production, false) => {
             let d = repo
@@ -633,7 +650,9 @@ pub fn ingest(
             (d, "project".to_string())
         }
         (Profile::Delivery, false) => {
-            let d = repo.inbox().join(format!("ingerido_{}", verification.shipment_id));
+            let d = repo
+                .inbox()
+                .join(format!("ingerido_{}", verification.shipment_id));
             (d, "01_REF".to_string())
         }
     };
@@ -688,7 +707,10 @@ pub fn ingest(
                         .join(", ")
                 })
                 .as_deref(),
-            exchange.doc().at("retention.until").and_then(|n| n.present_str()),
+            exchange
+                .doc()
+                .at("retention.until")
+                .and_then(|n| n.present_str()),
             "cleared",
         );
 
@@ -780,7 +802,12 @@ pub fn ingest(
 }
 
 /// Suprime de la cuarentena un paquete rechazado (apartado 39.1, tercer guion).
-pub fn discard_rejected(repo: &Repository, actor: &str, package_path: &Path, shipment_id: &str) -> Result<()> {
+pub fn discard_rejected(
+    repo: &Repository,
+    actor: &str,
+    package_path: &Path,
+    shipment_id: &str,
+) -> Result<()> {
     if package_path.is_file() {
         let _ = fsx::readonly::set_file_readonly(package_path, false);
         std::fs::remove_file(package_path).map_err(|e| Error::io(package_path, e))?;
@@ -848,9 +875,16 @@ mod tests {
         let audio = p.doc_mut().ensure_map("audio");
         audio.set("tempo", Node::Int(96));
         audio.set("origin", Node::str("00:00:00:00"));
-        p.doc_mut().set("vocabulary", Node::map(vec![("frozen", Node::Bool(true))]));
+        p.doc_mut()
+            .set("vocabulary", Node::map(vec![("frozen", Node::Bool(true))]));
         p.save().unwrap();
-        Escenario { _dir_a: dir_a, _dir_b: dir_b, emisor, receptor, proyecto: p }
+        Escenario {
+            _dir_a: dir_a,
+            _dir_b: dir_b,
+            emisor,
+            receptor,
+            proyecto: p,
+        }
     }
 
     fn envio(profile: Profile, cede: bool) -> Shipment {
@@ -910,10 +944,18 @@ mod tests {
     /// Emite un paquete y lo deposita en la cuarentena del receptor.
     fn emitir_y_depositar(e: &mut Escenario, s: &Shipment) -> (String, PathBuf) {
         let (mut prog, canc) = container::silent_progress();
-        let mut pr = Progress { on_progress: &mut prog, cancelled: &canc };
+        let mut pr = Progress {
+            on_progress: &mut prog,
+            cancelled: &canc,
+        };
         let em = emit::emit(
-            &e.emisor, "J. Duarte", &mut e.proyecto, s,
-            &Payload::for_profile(s.profile), sync(), &mut pr,
+            &e.emisor,
+            "J. Duarte",
+            &mut e.proyecto,
+            s,
+            &Payload::for_profile(s.profile),
+            sync(),
+            &mut pr,
         )
         .unwrap();
         let destino = e.receptor.inbox().join(em.artifact.file_name().unwrap());
@@ -924,7 +966,10 @@ mod tests {
 
     fn verificar(e: &Escenario, paquete: &Path, ctx: &ReceptionContext) -> Verification {
         let (mut prog, canc) = container::silent_progress();
-        let mut pr = Progress { on_progress: &mut prog, cancelled: &canc };
+        let mut pr = Progress {
+            on_progress: &mut prog,
+            cancelled: &canc,
+        };
         verify(&e.receptor, "M. Rivas", paquete, ctx, &mut pr).unwrap()
     }
 
@@ -942,8 +987,16 @@ mod tests {
         // Acuse de recibo.
         let acuse_path = e.receptor.root().join("acuse.yaml");
         let acuse = issue_receipt(
-            &e.receptor, "M. Rivas", &v, &contexto(), "01_REF",
-            Some("2027-08-06"), false, None, sync(), &acuse_path,
+            &e.receptor,
+            "M. Rivas",
+            &v,
+            &contexto(),
+            "01_REF",
+            Some("2027-08-06"),
+            false,
+            None,
+            sync(),
+            &acuse_path,
         )
         .unwrap();
         assert_eq!(acuse.result(), Some(ReceiptResult::Accepted));
@@ -967,7 +1020,11 @@ mod tests {
 
         // El cedente queda en tránsito y bloqueado.
         assert_eq!(e.proyecto.custody_state(), CustodyState::InTransit);
-        assert!(e.proyecto.root().join(crate::manifest::CUSTODY_LOCK_FILE).is_file());
+        assert!(e
+            .proyecto
+            .root()
+            .join(crate::manifest::CUSTODY_LOCK_FILE)
+            .is_file());
 
         let v = verificar(&e, &paquete, &contexto());
         assert!(v.transfers_custody);
@@ -976,21 +1033,39 @@ mod tests {
 
         // El cesionario ingiere y asume la custodia en un proyecto propio.
         let mut destino = project::create(
-            &e.receptor, "M. Rivas",
+            &e.receptor,
+            "M. Rivas",
             &NewProject {
-                title: "Tema Recibido".into(), artist: "Artista".into(), kind: "MIX".into(),
-                level: Level::B, release_uid: None, release_dir: None,
-                sample_rate: 48000, bit_depth: 24,
-                holder_org: "Estudio B".into(), holder_person: "M. Rivas".into(),
+                title: "Tema Recibido".into(),
+                artist: "Artista".into(),
+                kind: "MIX".into(),
+                level: Level::B,
+                release_uid: None,
+                release_dir: None,
+                sample_rate: 48000,
+                bit_depth: 24,
+                holder_org: "Estudio B".into(),
+                holder_person: "M. Rivas".into(),
                 active_volume: Some("vol-b".into()),
             },
         )
         .unwrap();
 
-        let ing = ingest(&e.receptor, "M. Rivas", &v, &contexto(), Some(&mut destino), &paquete).unwrap();
+        let ing = ingest(
+            &e.receptor,
+            "M. Rivas",
+            &v,
+            &contexto(),
+            Some(&mut destino),
+            &paquete,
+        )
+        .unwrap();
         assert!(ing.custody_assumed);
         assert_eq!(destino.custody_state(), CustodyState::Own);
-        assert!(!destino.root().join(crate::manifest::CUSTODY_LOCK_FILE).exists());
+        assert!(!destino
+            .root()
+            .join(crate::manifest::CUSTODY_LOCK_FILE)
+            .exists());
 
         // La cronología fusionada es consecutiva y contiene los asientos de
         // ambas partes.
@@ -1027,7 +1102,15 @@ mod tests {
 
         // El acuse de rechazo indica la verificación que falló.
         let acuse = issue_receipt(
-            &e.receptor, "M. Rivas", &v, &contexto(), "01_REF", None, false, None, sync(),
+            &e.receptor,
+            "M. Rivas",
+            &v,
+            &contexto(),
+            "01_REF",
+            None,
+            false,
+            None,
+            sync(),
             &e.receptor.root().join("acuse.yaml"),
         )
         .unwrap();
@@ -1079,7 +1162,8 @@ mod tests {
             let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
             zip.start_file("mimetype", stored).unwrap();
             zip.write_all(container::MIMETYPE.as_bytes()).unwrap();
-            zip.start_file("paquete/../../escapado.txt", SimpleFileOptions::default()).unwrap();
+            zip.start_file("paquete/../../escapado.txt", SimpleFileOptions::default())
+                .unwrap();
             zip.write_all(b"fuera").unwrap();
             zip.finish().unwrap();
         }
@@ -1139,11 +1223,22 @@ mod tests {
 
         // Aceptar el material sin aceptar la custodia (apartado 41.2).
         let acuse = issue_receipt(
-            &e.receptor, "M. Rivas", &v, &contexto(), "01_REF", None,
-            false, None, sync(), &e.receptor.root().join("acuse.yaml"),
+            &e.receptor,
+            "M. Rivas",
+            &v,
+            &contexto(),
+            "01_REF",
+            None,
+            false,
+            None,
+            sync(),
+            &e.receptor.root().join("acuse.yaml"),
         )
         .unwrap();
-        assert_eq!(acuse.result(), Some(ReceiptResult::AcceptedWithReservations));
+        assert_eq!(
+            acuse.result(),
+            Some(ReceiptResult::AcceptedWithReservations)
+        );
         assert_eq!(acuse.custody_accepted(), Some(false));
     }
 
@@ -1153,8 +1248,16 @@ mod tests {
         let (_id, paquete) = emitir_y_depositar(&mut e, &envio(Profile::Delivery, false));
         let v = verificar(&e, &paquete, &contexto());
         let err = issue_receipt(
-            &e.receptor, "M. Rivas", &v, &contexto(), "01_REF", None, false, None,
-            SyncState::Unavailable, &e.receptor.root().join("acuse.yaml"),
+            &e.receptor,
+            "M. Rivas",
+            &v,
+            &contexto(),
+            "01_REF",
+            None,
+            false,
+            None,
+            SyncState::Unavailable,
+            &e.receptor.root().join("acuse.yaml"),
         )
         .unwrap_err();
         assert_eq!(err.clause(), Some("22.3.1"));

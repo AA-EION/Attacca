@@ -155,10 +155,8 @@ fn bad_date(date: &str) -> Error {
 /// apartado 22.3.1 admite «un protocolo de sincronización horaria equivalente»
 /// además de RFC 5905; la cabecera `Date` de una respuesta HTTP lo es, con la
 /// limitación de precisión que se declara en [`Precision`].
-pub const DEFAULT_HTTPS_SOURCES: &[&str] = &[
-    "https://www.cloudflare.com/",
-    "https://www.google.com/",
-];
+pub const DEFAULT_HTTPS_SOURCES: &[&str] =
+    &["https://www.cloudflare.com/", "https://www.google.com/"];
 
 /// Precisión de la medida, según la fuente empleada.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -269,8 +267,18 @@ fn parse_http_date(value: &str) -> Option<i64> {
     }
     let dia: u8 = partes[1].parse().ok()?;
     let mes = match partes[2] {
-        "Jan" => 1, "Feb" => 2, "Mar" => 3, "Apr" => 4, "May" => 5, "Jun" => 6,
-        "Jul" => 7, "Aug" => 8, "Sep" => 9, "Oct" => 10, "Nov" => 11, "Dec" => 12,
+        "Jan" => 1,
+        "Feb" => 2,
+        "Mar" => 3,
+        "Apr" => 4,
+        "May" => 5,
+        "Jun" => 6,
+        "Jul" => 7,
+        "Aug" => 8,
+        "Sep" => 9,
+        "Oct" => 10,
+        "Nov" => 11,
+        "Dec" => 12,
         _ => return None,
     };
     let anio: i32 = partes[3].parse().ok()?;
@@ -320,7 +328,12 @@ pub fn require_sync_for_emission(state: SyncState) -> Result<()> {
 /// fuente, en milisegundos, o `None` si la fuente no responde.
 fn query_sntp(source: &str, timeout: Duration) -> Option<i64> {
     let addr = source.to_socket_addrs().ok()?.next()?;
-    let socket = UdpSocket::bind(if addr.is_ipv4() { "0.0.0.0:0" } else { "[::]:0" }).ok()?;
+    let socket = UdpSocket::bind(if addr.is_ipv4() {
+        "0.0.0.0:0"
+    } else {
+        "[::]:0"
+    })
+    .ok()?;
     socket.set_read_timeout(Some(timeout)).ok()?;
     socket.set_write_timeout(Some(timeout)).ok()?;
 

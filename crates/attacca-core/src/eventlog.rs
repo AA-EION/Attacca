@@ -124,8 +124,16 @@ impl LogEntry {
                 .and_then(|v| v.as_str())
                 .map(str::to_string),
             detail: o.get("detail").cloned().unwrap_or(Value::Null),
-            prev: o.get("prev").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
-            hash: o.get("hash").and_then(|v| v.as_str()).unwrap_or_default().to_string(),
+            prev: o
+                .get("prev")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            hash: o
+                .get("hash")
+                .and_then(|v| v.as_str())
+                .unwrap_or_default()
+                .to_string(),
         })
     }
 }
@@ -338,8 +346,12 @@ mod tests {
     fn cada_entrada_encadena_con_la_anterior() {
         let dir = tempfile::tempdir().unwrap();
         let log = EventLog::at(dir.path());
-        let a = log.append("a", event::PROJECT_CREATED, None, json!({})).unwrap();
-        let b = log.append("a", event::PROJECT_SEALED, None, json!({})).unwrap();
+        let a = log
+            .append("a", event::PROJECT_CREATED, None, json!({}))
+            .unwrap();
+        let b = log
+            .append("a", event::PROJECT_SEALED, None, json!({}))
+            .unwrap();
         assert_eq!(a.prev, "", "la primera entrada no tiene anterior");
         assert_eq!(b.prev, a.hash);
         assert!(log.verify_chain().unwrap().is_intact());
@@ -400,9 +412,12 @@ mod tests {
     fn filtra_por_proyecto() {
         let dir = tempfile::tempdir().unwrap();
         let log = EventLog::at(dir.path());
-        log.append("a", event::PROJECT_CREATED, Some("U1"), json!({})).unwrap();
-        log.append("a", event::PROJECT_CREATED, Some("U2"), json!({})).unwrap();
-        log.append("a", event::PROJECT_SEALED, Some("U1"), json!({})).unwrap();
+        log.append("a", event::PROJECT_CREATED, Some("U1"), json!({}))
+            .unwrap();
+        log.append("a", event::PROJECT_CREATED, Some("U2"), json!({}))
+            .unwrap();
+        log.append("a", event::PROJECT_SEALED, Some("U1"), json!({}))
+            .unwrap();
         assert_eq!(log.entries_for("U1").unwrap().len(), 2);
         assert_eq!(log.entries_for("U2").unwrap().len(), 1);
     }

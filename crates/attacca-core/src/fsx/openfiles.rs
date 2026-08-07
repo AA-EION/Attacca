@@ -72,7 +72,9 @@ mod platform {
             let fd_dir = proc_entry.path().join("fd");
             // Sin privilegios sobre un proceso ajeno la lectura falla; se omite
             // sin abortar la comprobación completa.
-            let Ok(fds) = fs::read_dir(&fd_dir) else { continue };
+            let Ok(fds) = fs::read_dir(&fd_dir) else {
+                continue;
+            };
 
             for fd_entry in fds.flatten() {
                 let Ok(target) = fs::read_link(fd_entry.path()) else {
@@ -82,7 +84,9 @@ mod platform {
                     continue;
                 }
                 let fd_name = fd_entry.file_name();
-                let Some(fd_num) = fd_name.to_str() else { continue };
+                let Some(fd_num) = fd_name.to_str() else {
+                    continue;
+                };
                 let fdinfo = proc_entry.path().join("fdinfo").join(fd_num);
                 if writable_flags(&fdinfo) && !found.contains(&target) {
                     found.push(target);
@@ -120,9 +124,11 @@ mod platform {
     /// analiza sin ambigüedad frente a rutas con espacios.
     pub fn open_for_write(root: &Path) -> Detection {
         let output = Command::new("/usr/sbin/lsof")
-            .arg("-F").arg("an")   // a: modo de acceso; n: nombre
-            .arg("-w")             // sin advertencias
-            .arg("+D").arg(root)   // recorrido del árbol
+            .arg("-F")
+            .arg("an") // a: modo de acceso; n: nombre
+            .arg("-w") // sin advertencias
+            .arg("+D")
+            .arg(root) // recorrido del árbol
             .output();
 
         let Ok(output) = output else {
@@ -161,8 +167,8 @@ mod platform {
     use std::path::{Path, PathBuf};
     use windows_sys::Win32::Foundation::ERROR_SUCCESS;
     use windows_sys::Win32::System::RestartManager::{
-        RmEndSession, RmGetList, RmRegisterResources, RmStartSession, RM_PROCESS_INFO,
-        CCH_RM_SESSION_KEY,
+        RmEndSession, RmGetList, RmRegisterResources, RmStartSession, CCH_RM_SESSION_KEY,
+        RM_PROCESS_INFO,
     };
 
     /// El Administrador de Reinicio indica qué procesos mantienen abierto un
@@ -268,8 +274,9 @@ mod platform {
     fn is_locked(path: &Path) -> bool {
         match std::fs::OpenOptions::new().write(true).open(path) {
             Ok(_) => false,
-            Err(e) => e.kind() == std::io::ErrorKind::PermissionDenied
-                || e.raw_os_error() == Some(32), // ERROR_SHARING_VIOLATION
+            Err(e) => {
+                e.kind() == std::io::ErrorKind::PermissionDenied || e.raw_os_error() == Some(32)
+            } // ERROR_SHARING_VIOLATION
         }
     }
 
@@ -336,7 +343,7 @@ mod tests {
 
         let esperado = objetivo.canonicalize().unwrap();
         assert!(
-            detectados.iter().any(|p| *p == esperado),
+            detectados.contains(&esperado),
             "no se detectó {}; detectados: {detectados:?}",
             esperado.display()
         );

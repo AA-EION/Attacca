@@ -127,7 +127,10 @@ pub fn render() -> String {
     let mut s = String::new();
     s.push_str("DECLARACION DE CONFORMIDAD\n");
     s.push_str("==========================\n\n");
-    s.push_str(&format!("Implementacion:    {} {}\n", d.implementation, d.version));
+    s.push_str(&format!(
+        "Implementacion:    {} {}\n",
+        d.implementation, d.version
+    ));
     s.push_str(&format!("Norma aplicada:    STAVE {}\n", d.stave_version));
     s.push_str(&format!(
         "Clase declarada:   {} — {}\n",

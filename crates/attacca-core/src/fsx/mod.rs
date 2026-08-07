@@ -71,7 +71,13 @@ fn copy_dir(
             if skip_dirs.contains(&name.as_str()) {
                 continue;
             }
-            copy_dir(&entry.path(), &dst.join(&name), skip_dirs, copied, depth + 1)?;
+            copy_dir(
+                &entry.path(),
+                &dst.join(&name),
+                skip_dirs,
+                copied,
+                depth + 1,
+            )?;
         } else if ft.is_file() {
             let target = dst.join(&name);
             std::fs::copy(entry.path(), &target).map_err(|e| Error::io(&target, e))?;
@@ -98,7 +104,11 @@ mod tests {
         fs::write(origen.path().join("PROJECT.yaml"), b"uid: A").unwrap();
         fs::write(origen.path().join("00_ADMIN/Notes/n.md"), b"notas").unwrap();
         fs::write(origen.path().join("00_ADMIN/.DS_Store"), b"basura").unwrap();
-        fs::write(origen.path().join("08_DELIVERY/2026-08-06_Sello/p.zip"), b"pkg").unwrap();
+        fs::write(
+            origen.path().join("08_DELIVERY/2026-08-06_Sello/p.zip"),
+            b"pkg",
+        )
+        .unwrap();
 
         let destino = tempfile::tempdir().unwrap();
         let dst = destino.path().join("derivado");
@@ -122,6 +132,9 @@ mod tests {
         let destino = tempfile::tempdir().unwrap();
         let dst = destino.path().join("copia");
         copy_tree(origen.path(), &dst, &[]).unwrap();
-        assert!(!fs::metadata(dst.join("a.txt")).unwrap().permissions().readonly());
+        assert!(!fs::metadata(dst.join("a.txt"))
+            .unwrap()
+            .permissions()
+            .readonly());
     }
 }

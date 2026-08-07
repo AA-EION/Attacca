@@ -252,7 +252,10 @@ impl Receipt {
     }
 
     pub fn assumed_at(&self) -> Option<&str> {
-        self.0.doc.at("custody.assumed_at").and_then(|n| n.present_str())
+        self.0
+            .doc
+            .at("custody.assumed_at")
+            .and_then(|n| n.present_str())
     }
 }
 
@@ -306,7 +309,10 @@ pub fn build(
             Node::map(vec![
                 ("accepted", Node::Bool(c.accepted)),
                 ("assumed_at", Node::opt_str(c.assumed_at.as_deref())),
-                ("expected_return", Node::opt_str(c.expected_return.as_deref())),
+                (
+                    "expected_return",
+                    Node::opt_str(c.expected_return.as_deref()),
+                ),
             ]),
         );
     }
@@ -329,11 +335,13 @@ pub fn build(
         Node::map(vec![
             (
                 "usage_terms",
-                Node::str(if checks.usage_accepted.failed() || result == ReceiptResult::Rejected {
-                    "rejected"
-                } else {
-                    "accepted"
-                }),
+                Node::str(
+                    if checks.usage_accepted.failed() || result == ReceiptResult::Rejected {
+                        "rejected"
+                    } else {
+                        "accepted"
+                    },
+                ),
             ),
             ("retention_until", Node::opt_str(retention_until)),
         ]),
@@ -432,12 +440,25 @@ mod tests {
             Some("2031-08-06"),
             "project",
         );
-        for campo in ["stave", "receipt", "recipient", "verification", "result", "custody", "discrepancies", "acceptance", "destination_class"] {
+        for campo in [
+            "stave",
+            "receipt",
+            "recipient",
+            "verification",
+            "result",
+            "custody",
+            "discrepancies",
+            "acceptance",
+            "destination_class",
+        ] {
             assert!(d.get(campo).is_some(), "falta {campo}");
         }
         assert_eq!(d.get("result").unwrap().as_str(), Some("accepted"));
         assert_eq!(d.at("custody.accepted").unwrap().as_bool(), Some(true));
-        assert_eq!(d.at("acceptance.usage_terms").unwrap().as_str(), Some("accepted"));
+        assert_eq!(
+            d.at("acceptance.usage_terms").unwrap().as_str(),
+            Some("accepted")
+        );
         // Las catorce verificaciones constan por separado.
         assert_eq!(d.get("verification").unwrap().as_map().unwrap().len(), 14);
     }
@@ -447,13 +468,27 @@ mod tests {
         let mut v = todas(Outcome::Pass);
         v.package_integrity = Outcome::Fail;
         let d = build(
-            "20260806-AAAA", "2026-08-07T09:12:00-05:00", "2026-08-07T10:00:00-05:00",
-            "abc", "Estudio B", "M. Rivas", None, &v,
-            &[("package_integrity".into(), "3 de 128 archivos no coinciden".into())],
-            None, None, "01_REF",
+            "20260806-AAAA",
+            "2026-08-07T09:12:00-05:00",
+            "2026-08-07T10:00:00-05:00",
+            "abc",
+            "Estudio B",
+            "M. Rivas",
+            None,
+            &v,
+            &[(
+                "package_integrity".into(),
+                "3 de 128 archivos no coinciden".into(),
+            )],
+            None,
+            None,
+            "01_REF",
         );
         assert_eq!(d.get("result").unwrap().as_str(), Some("rejected"));
-        assert_eq!(d.at("acceptance.usage_terms").unwrap().as_str(), Some("rejected"));
+        assert_eq!(
+            d.at("acceptance.usage_terms").unwrap().as_str(),
+            Some("rejected")
+        );
         assert_eq!(d.get("discrepancies").unwrap().as_seq().unwrap().len(), 1);
     }
 
@@ -463,10 +498,22 @@ mod tests {
         let ruta = dir.path().join("RECEIPT.yaml");
         let mut r = Receipt::new(&ruta);
         *r.doc_mut() = build(
-            "20260806-AAAA", "2026-08-07T09:12:00-05:00", "2026-08-07T10:00:00-05:00",
-            "resumen", "Estudio B", "M. Rivas", None, &todas(Outcome::Pass), &[],
-            Some(CustodyAcceptance { accepted: true, assumed_at: Some("2026-08-07T10:00:00-05:00".into()), expected_return: None }),
-            None, "project",
+            "20260806-AAAA",
+            "2026-08-07T09:12:00-05:00",
+            "2026-08-07T10:00:00-05:00",
+            "resumen",
+            "Estudio B",
+            "M. Rivas",
+            None,
+            &todas(Outcome::Pass),
+            &[],
+            Some(CustodyAcceptance {
+                accepted: true,
+                assumed_at: Some("2026-08-07T10:00:00-05:00".into()),
+                expected_return: None,
+            }),
+            None,
+            "project",
         );
         r.save().unwrap();
 

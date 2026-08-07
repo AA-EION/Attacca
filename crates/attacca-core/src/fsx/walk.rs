@@ -128,7 +128,11 @@ fn walk(root: &Path, dir: &Path, out: &mut Vec<Entry>, depth: usize) {
         } else if ft.is_file() {
             let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
             if let Some(relative) = relative_slash(root, &path) {
-                out.push(Entry { path, relative, size });
+                out.push(Entry {
+                    path,
+                    relative,
+                    size,
+                });
             }
         }
     }
@@ -201,7 +205,11 @@ mod tests {
         fs::write(dir.path().join("PROJECT.yaml"), b"uid: A").unwrap();
         fs::write(dir.path().join("02_SESSIONS/Reaper/s.rpp"), b"sesion").unwrap();
         fs::write(dir.path().join("02_SESSIONS/Reaper/s.rpp-bak"), b"copia").unwrap();
-        fs::write(dir.path().join("02_SESSIONS/Reaper/Freeze Files/f.wav"), b"x").unwrap();
+        fs::write(
+            dir.path().join("02_SESSIONS/Reaper/Freeze Files/f.wav"),
+            b"x",
+        )
+        .unwrap();
         fs::write(dir.path().join(".DS_Store"), b"basura").unwrap();
 
         let files = conserved_files(dir.path());

@@ -116,8 +116,16 @@ pub fn record_receipt(
                 state: CustodyState::Ceded,
                 holder: format!(
                     "{} / {}",
-                    receipt.doc().at("recipient.org").and_then(|n| n.present_str()).unwrap_or("desconocida"),
-                    receipt.doc().at("recipient.officer").and_then(|n| n.present_str()).unwrap_or("")
+                    receipt
+                        .doc()
+                        .at("recipient.org")
+                        .and_then(|n| n.present_str())
+                        .unwrap_or("desconocida"),
+                    receipt
+                        .doc()
+                        .at("recipient.officer")
+                        .and_then(|n| n.present_str())
+                        .unwrap_or("")
                 ),
                 ceded_by: format!("{org} / {actor}"),
                 shipment_id: envio.clone().unwrap_or_default(),
@@ -162,7 +170,11 @@ pub fn record_receipt(
     )?;
     log.append(
         actor,
-        if cede { event::CUSTODY_TRANSFERRED } else { event::CUSTODY_RECLAIMED },
+        if cede {
+            event::CUSTODY_TRANSFERRED
+        } else {
+            event::CUSTODY_RECLAIMED
+        },
         project.uid(),
         json!({"shipment_id": envio}),
     )?;
@@ -174,16 +186,14 @@ pub fn record_receipt(
 ///
 /// La reclamación precede a la recuperación forzosa: vencida la fecha esperada
 /// de retorno, el cedente debe reclamarlo y registrar la reclamación.
-pub fn claim_return(
-    repo: &Repository,
-    actor: &str,
-    project: &ProjectManifest,
-) -> Result<Expiry> {
+pub fn claim_return(repo: &Repository, actor: &str, project: &ProjectManifest) -> Result<Expiry> {
     let estado = project.custody_state();
     if estado != CustodyState::Ceded {
         return Err(Error::Custody {
             state: estado.as_str().to_string(),
-            detail: "No se ha reclamado nada. Solo procede reclamar el retorno de un proyecto cedido.".into(),
+            detail:
+                "No se ha reclamado nada. Solo procede reclamar el retorno de un proyecto cedido."
+                    .into(),
         });
     }
     let (situacion, retorno) = expiry_of(project)?;
@@ -343,12 +353,16 @@ pub fn accept_return(
     // Paso 1: incorporar el material como versión nueva, sin sobrescribir la
     // copia congelada anterior.
     let sufijo = if divergent { "divergente" } else { "retorno" };
-    let destino = project
-        .root()
-        .join("09_TRANSFER")
-        .join(format!("{}_{sufijo}_{}", clock::today(), exchange.shipment_id().unwrap_or("sn")));
+    let destino = project.root().join("09_TRANSFER").join(format!(
+        "{}_{sufijo}_{}",
+        clock::today(),
+        exchange.shipment_id().unwrap_or("sn")
+    ));
     let contenido = pkg.content();
-    fsx::space::ensure_available(&destino, fsx::walk::total_bytes(&fsx::walk::conserved_files(&contenido)))?;
+    fsx::space::ensure_available(
+        &destino,
+        fsx::walk::total_bytes(&fsx::walk::conserved_files(&contenido)),
+    )?;
     fsx::copy_tree(&contenido, &destino, &[])?;
 
     if divergent {
@@ -481,11 +495,8 @@ pub fn open_divergent_project(
         )));
     }
 
-    let files_copied = fsx::copy_tree(
-        ceded.root(),
-        &derived_root,
-        &["08_DELIVERY", "09_TRANSFER"],
-    )?;
+    let files_copied =
+        fsx::copy_tree(ceded.root(), &derived_root, &["08_DELIVERY", "09_TRANSFER"])?;
 
     let derived_uid = crate::ids::new_uid();
     let ahora = clock::now_rfc3339();
@@ -638,7 +649,10 @@ mod tests {
         fsx::readonly::set_tree_readonly(
             p.root(),
             true,
-            &[crate::manifest::PROJECT_FILE, crate::manifest::CUSTODY_LOCK_FILE],
+            &[
+                crate::manifest::PROJECT_FILE,
+                crate::manifest::CUSTODY_LOCK_FILE,
+            ],
         )
         .unwrap();
     }
@@ -653,7 +667,9 @@ mod tests {
         let situacion = claim_return(&repo, "a", &p).unwrap();
         assert_eq!(situacion, Expiry::ClaimDue);
         let eventos = repo.event_log().entries_for(p.uid().unwrap()).unwrap();
-        assert!(eventos.iter().any(|e| e.event == event::CUSTODY_RETURN_CLAIMED));
+        assert!(eventos
+            .iter()
+            .any(|e| e.event == event::CUSTODY_RETURN_CLAIMED));
     }
 
     #[test]
@@ -701,7 +717,9 @@ mod tests {
 
         // Asiento en la cronología y no conformidad mayor abierta.
         let hist = p.custody_history();
-        assert!(hist.iter().any(|e| e.action == CustodyAction::CustodyReclaimed));
+        assert!(hist
+            .iter()
+            .any(|e| e.action == CustodyAction::CustodyReclaimed));
         let ncs = Register::at(repo.root()).open_entries().unwrap();
         assert_eq!(ncs.len(), 1);
         assert_eq!(ncs[0].severity, Severity::Major);
@@ -715,7 +733,8 @@ mod tests {
 
         // Llega el paquete de retorno, tarde.
         let paquete = dir.path().join("STAVE-XCHG_retorno");
-        let pkg = crate::package::bagit::PackageDir::create(dir.path(), "STAVE-XCHG_retorno").unwrap();
+        let pkg =
+            crate::package::bagit::PackageDir::create(dir.path(), "STAVE-XCHG_retorno").unwrap();
         std::fs::write(pkg.content().join("mezcla.wav"), b"trabajo del cesionario").unwrap();
         let mut ex = ExchangeManifest::new(pkg.exchange_manifest());
         ex.doc_mut().set(
@@ -740,7 +759,11 @@ mod tests {
         assert!(r.incorporated_at.join("mezcla.wav").is_file());
         // Y se abre una no conformidad para la reconciliación manual.
         let ncs = Register::at(repo.root()).open_entries().unwrap();
-        assert_eq!(ncs.len(), 2, "la de la recuperación y la del retorno tardío");
+        assert_eq!(
+            ncs.len(),
+            2,
+            "la de la recuperación y la del retorno tardío"
+        );
     }
 
     #[test]
@@ -750,10 +773,14 @@ mod tests {
         let asientos_previos = p.custody_history().len();
 
         let paquete = dir.path().join("STAVE-XCHG_retorno");
-        let pkg = crate::package::bagit::PackageDir::create(dir.path(), "STAVE-XCHG_retorno").unwrap();
+        let pkg =
+            crate::package::bagit::PackageDir::create(dir.path(), "STAVE-XCHG_retorno").unwrap();
         std::fs::write(pkg.content().join("mezcla.wav"), b"trabajo del cesionario").unwrap();
         let mut ex = ExchangeManifest::new(pkg.exchange_manifest());
-        ex.doc_mut().set("shipment", Node::map(vec![("id", Node::str("20260901-BBBB"))]));
+        ex.doc_mut().set(
+            "shipment",
+            Node::map(vec![("id", Node::str("20260901-BBBB"))]),
+        );
         ex.doc_mut().set(
             "custody",
             Node::map(vec![
@@ -786,8 +813,12 @@ mod tests {
         assert!(r.incorporated_at.join("mezcla.wav").is_file());
         // La cronología incorpora los asientos de la otra parte y el retorno.
         let hist = p.custody_history();
-        assert!(hist.iter().any(|e| e.action == CustodyAction::CustodyAssumed));
-        assert!(hist.iter().any(|e| e.action == CustodyAction::CustodyReturned));
+        assert!(hist
+            .iter()
+            .any(|e| e.action == CustodyAction::CustodyAssumed));
+        assert!(hist
+            .iter()
+            .any(|e| e.action == CustodyAction::CustodyReturned));
         assert!(custody::check_chronology(&hist).is_clean(), "{hist:?}");
     }
 
@@ -798,7 +829,8 @@ mod tests {
         let paquete = dir.path().join("STAVE-XCHG_otro");
         let pkg = crate::package::bagit::PackageDir::create(dir.path(), "STAVE-XCHG_otro").unwrap();
         let mut ex = ExchangeManifest::new(pkg.exchange_manifest());
-        ex.doc_mut().set("shipment", Node::map(vec![("id", Node::str("X"))]));
+        ex.doc_mut()
+            .set("shipment", Node::map(vec![("id", Node::str("X"))]));
         ex.save().unwrap();
         let e = accept_return(&repo, "a", &mut p, &paquete, "Estudio A").unwrap_err();
         assert_eq!(e.clause(), Some("41.3"));
@@ -814,14 +846,29 @@ mod tests {
 
         assert!(d.derived_id.ends_with("_divergente"));
         assert_ne!(d.derived_uid, d.source_uid);
-        let derivado = ProjectManifest::load(d.derived_root.join(crate::manifest::PROJECT_FILE)).unwrap();
+        let derivado =
+            ProjectManifest::load(d.derived_root.join(crate::manifest::PROJECT_FILE)).unwrap();
         // El derivado declara el proyecto y el envío de los que deriva.
-        assert_eq!(derivado.doc().at("lineage.parent_uid").unwrap().as_str(), Some(d.source_uid.as_str()));
-        assert_eq!(derivado.doc().at("lineage.shipment_id").unwrap().as_str(), Some("20260806-AAAA"));
+        assert_eq!(
+            derivado.doc().at("lineage.parent_uid").unwrap().as_str(),
+            Some(d.source_uid.as_str())
+        );
+        assert_eq!(
+            derivado.doc().at("lineage.shipment_id").unwrap().as_str(),
+            Some("20260806-AAAA")
+        );
         // El derivado es modificable; el cedido sigue bloqueado.
         assert_eq!(derivado.custody_state(), CustodyState::Own);
-        assert!(!std::fs::metadata(d.derived_root.join("00_ADMIN/notas.txt")).unwrap().permissions().readonly());
-        assert!(std::fs::metadata(p.root().join("00_ADMIN/notas.txt")).unwrap().permissions().readonly());
+        assert!(
+            !std::fs::metadata(d.derived_root.join("00_ADMIN/notas.txt"))
+                .unwrap()
+                .permissions()
+                .readonly()
+        );
+        assert!(std::fs::metadata(p.root().join("00_ADMIN/notas.txt"))
+            .unwrap()
+            .permissions()
+            .readonly());
         assert_eq!(p.custody_state(), CustodyState::Ceded);
 
         // Y la divergencia queda registrada como no conformidad.

@@ -142,7 +142,11 @@ pub fn project_id(date: &str, title: &str, kind: &str) -> Result<String> {
         ));
     }
     let slug = slugify(title);
-    let slug = if slug.is_empty() { "Sin-Titulo".to_string() } else { slug };
+    let slug = if slug.is_empty() {
+        "Sin-Titulo".to_string()
+    } else {
+        slug
+    };
     let slug = truncate_chars(&slug, MAX_TITLE_CHARS);
     let id = format!("{date}_{slug}_{kind}");
     check_name(&id)?;
@@ -159,7 +163,11 @@ pub fn release_id(date: &str, title: &str, class: &str) -> Result<String> {
         ));
     }
     let slug = slugify(title);
-    let slug = if slug.is_empty() { "Sin-Titulo".to_string() } else { slug };
+    let slug = if slug.is_empty() {
+        "Sin-Titulo".to_string()
+    } else {
+        slug
+    };
     let id = format!("{date}_{}_{class}", truncate_chars(&slug, MAX_TITLE_CHARS));
     check_name(&id)?;
     Ok(id)
@@ -372,7 +380,10 @@ mod tests {
 
     #[test]
     fn el_sufijo_de_version_lleva_dos_digitos() {
-        assert_eq!(with_version_suffix("2026-08-06_T_ORIG", 2), "2026-08-06_T_ORIG_v02");
+        assert_eq!(
+            with_version_suffix("2026-08-06_T_ORIG", 2),
+            "2026-08-06_T_ORIG_v02"
+        );
         assert_eq!(version_suffix_of("2026-08-06_T_ORIG_v02"), Some(2));
         assert_eq!(version_suffix_of("2026-08-06_T_ORIG"), None);
         assert_eq!(version_suffix_of("2026-08-06_T_ORIG_v2"), None, "regla 7");
@@ -383,7 +394,10 @@ mod tests {
         let rutas = vec!["20_PROJECTS/1_ACTIVE/2026-08-06_Tema_ORIG/08_DELIVERY/a.wav".to_string()];
         let mut replicas = HashMap::new();
         replicas.insert("local".into(), "/home/u/.stave".to_string());
-        replicas.insert("portatil".into(), "/Volumes/STUDIO-PORT-01/STAVE".to_string());
+        replicas.insert(
+            "portatil".into(),
+            "/Volumes/STUDIO-PORT-01/STAVE".to_string(),
+        );
         let b = check_path_budget(&rutas, &replicas);
         assert_eq!(b.replica, "portatil");
         assert!(!b.exceeded());
@@ -400,7 +414,11 @@ mod tests {
 
     #[test]
     fn detecta_colisiones_sin_distincion_de_mayusculas() {
-        let nombres = vec!["Mezcla.wav".to_string(), "mezcla.WAV".to_string(), "otro.wav".to_string()];
+        let nombres = vec![
+            "Mezcla.wav".to_string(),
+            "mezcla.WAV".to_string(),
+            "otro.wav".to_string(),
+        ];
         let c = case_collisions(&nombres);
         assert_eq!(c.len(), 1);
         assert!(case_collisions(&["a.wav".to_string(), "b.wav".to_string()]).is_empty());
@@ -413,7 +431,13 @@ mod tests {
             "Cancion_LEAD-VOX_comp_v03.wav"
         );
         assert_eq!(
-            deliverable_audio_name("Artista", "Cancion De Ejemplo", Some("Radio Edit"), "WAV-24-48", "wav"),
+            deliverable_audio_name(
+                "Artista",
+                "Cancion De Ejemplo",
+                Some("Radio Edit"),
+                "WAV-24-48",
+                "wav"
+            ),
             "Artista - Cancion De Ejemplo (Radio Edit) [WAV-24-48].wav"
         );
     }

@@ -163,7 +163,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let ruta = dir.path().join(PROJECT_FILE);
         let mut m = Manifest::new(&ruta, ArtifactKind::Project);
-        m.doc.ensure_map("stave").set("written_by", Node::str("OtraHerramienta 3.1"));
+        m.doc
+            .ensure_map("stave")
+            .set("written_by", Node::str("OtraHerramienta 3.1"));
         m.save_verbatim().unwrap();
         let texto = std::fs::read_to_string(&ruta).unwrap();
         assert!(texto.contains("written_by: OtraHerramienta 3.1"));

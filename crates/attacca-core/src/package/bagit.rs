@@ -32,7 +32,12 @@ pub const TAG_FILES: &[&str] = &[
 ];
 
 /// Nombre del directorio base del paquete (apartado 32.1).
-pub fn package_name(date: &str, issuer: &str, recipient: &str, shipment_id: &str) -> Result<String> {
+pub fn package_name(
+    date: &str,
+    issuer: &str,
+    recipient: &str,
+    shipment_id: &str,
+) -> Result<String> {
     let name = format!(
         "STAVE-XCHG_{date}_{}_{}_{}",
         crate::naming::slugify(issuer),
@@ -297,7 +302,12 @@ impl PackageDir {
         let mut v = PackageVerification::default();
 
         // Archivos de etiqueta exigidos por el apartado 32.1.
-        for name in [BAGIT_TXT, crate::manifest::EXCHANGE_FILE, LEEME_TXT, MANIFEST_TXT] {
+        for name in [
+            BAGIT_TXT,
+            crate::manifest::EXCHANGE_FILE,
+            LEEME_TXT,
+            MANIFEST_TXT,
+        ] {
             if !self.root.join(name).is_file() {
                 v.missing_tag_files.push((*name).to_string());
             }
@@ -310,9 +320,10 @@ impl PackageDir {
             let esperado = IntegrityManifest::load(&tag_path)?;
             for (name, digest) in esperado.entries() {
                 let p = self.root.join(name);
-                if !p.is_file() {
-                    v.tag_failures.push(name.to_string());
-                } else if integrity::digest_file(&p)? != digest {
+                // Un archivo de etiqueta ausente y uno cuyo resumen no coincide
+                // son el mismo fallo a efectos de la verificación 4: el
+                // empaquetado no es íntegro.
+                if !p.is_file() || integrity::digest_file(&p)? != digest {
                     v.tag_failures.push(name.to_string());
                 }
             }
@@ -404,8 +415,16 @@ mod tests {
         fs::write(p.log_file(), b"{\"event\":\"exchange.package.built\"}\n").unwrap();
         atomic::write_str(&p.exchange_manifest(), "stave:\n  version: \"2.0\"\n").unwrap();
         p.write_bagit().unwrap();
-        p.write_bag_info("Estudio A", "2026-08-06", 16, 1, "0007").unwrap();
-        p.write_leeme("0007", "Estudio A", "intercambio@estudioa.example", 72, false).unwrap();
+        p.write_bag_info("Estudio A", "2026-08-06", 16, 1, "0007")
+            .unwrap();
+        p.write_leeme(
+            "0007",
+            "Estudio A",
+            "intercambio@estudioa.example",
+            72,
+            false,
+        )
+        .unwrap();
         p.write_payload_manifest().unwrap();
         p.write_tag_manifest().unwrap();
         p
@@ -415,7 +434,14 @@ mod tests {
     fn la_estructura_reproduce_el_apartado_32_1() {
         let dir = tempfile::tempdir().unwrap();
         let p = paquete(dir.path());
-        for archivo in [BAGIT_TXT, BAG_INFO_TXT, "EXCHANGE.yaml", LEEME_TXT, MANIFEST_TXT, TAGMANIFEST_TXT] {
+        for archivo in [
+            BAGIT_TXT,
+            BAG_INFO_TXT,
+            "EXCHANGE.yaml",
+            LEEME_TXT,
+            MANIFEST_TXT,
+            TAGMANIFEST_TXT,
+        ] {
             assert!(p.root().join(archivo).is_file(), "falta {archivo}");
         }
         assert!(p.content().is_dir());
@@ -488,14 +514,27 @@ mod tests {
 
     #[test]
     fn el_leeme_explica_como_extraer_sin_attacca() {
-        let t = leeme_txt("STAVE-XCHG_2026-08-06_A_B_0007", "0007", "Estudio A", "correo@a.example", 72, false);
+        let t = leeme_txt(
+            "STAVE-XCHG_2026-08-06_A_B_0007",
+            "0007",
+            "Estudio A",
+            "correo@a.example",
+            72,
+            false,
+        );
         assert!(t.contains(".zip"), "debe indicar el renombrado a .zip");
         assert!(t.contains("unzip"));
         assert!(t.contains("sha256sum -c"));
         assert!(t.contains("shasum -a 256 -c"));
-        assert!(t.contains("correo@a.example"), "debe indicar la dirección del acuse");
+        assert!(
+            t.contains("correo@a.example"),
+            "debe indicar la dirección del acuse"
+        );
         assert!(t.contains("72 horas"));
-        assert!(t.is_ascii(), "texto plano sin caracteres que dependan de la codificación");
+        assert!(
+            t.is_ascii(),
+            "texto plano sin caracteres que dependan de la codificación"
+        );
     }
 
     #[test]

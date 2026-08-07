@@ -63,13 +63,22 @@ fn crear(e: &Estudio, titulo: &str) -> ProjectManifest {
 /// audio cerrados e informe de control de calidad.
 fn preparar_para_entrega(p: &mut ProjectManifest) {
     let raiz = p.root().to_path_buf();
-    for sub in ["07_MASTER", "05_STEMS", "00_ADMIN/Credits", "00_ADMIN/Notes"] {
+    for sub in [
+        "07_MASTER",
+        "05_STEMS",
+        "00_ADMIN/Credits",
+        "00_ADMIN/Notes",
+    ] {
         std::fs::create_dir_all(raiz.join(sub)).unwrap();
     }
     std::fs::write(raiz.join("07_MASTER/master.wav"), b"audio del master").unwrap();
     std::fs::write(raiz.join("05_STEMS/01_KICK.wav"), b"stem de bombo").unwrap();
     std::fs::write(raiz.join("00_ADMIN/Credits/creditos.csv"), b"rol,nombre\n").unwrap();
-    std::fs::write(raiz.join("00_ADMIN/Notes/QC_informe.txt"), b"control aprobado\n").unwrap();
+    std::fs::write(
+        raiz.join("00_ADMIN/Notes/QC_informe.txt"),
+        b"control aprobado\n",
+    )
+    .unwrap();
 
     let audio = p.doc_mut().ensure_map("audio");
     audio.set("tempo", Node::Int(96));
@@ -81,10 +90,13 @@ fn preparar_para_entrega(p: &mut ProjectManifest) {
     master.set("lufs_i", Node::Float(-9.8));
     master.set("lra", Node::Float(5.2));
     master.set("true_peak_db", Node::Float(-1.0));
-    p.doc_mut().ensure_map("tools").set("primary", Node::str("Reaper 7.2"));
     p.doc_mut()
-        .ensure_seq("people")
-        .push(Node::map(vec![("name", Node::str("A. Ruiz")), ("role", Node::str("mezcla"))]));
+        .ensure_map("tools")
+        .set("primary", Node::str("Reaper 7.2"));
+    p.doc_mut().ensure_seq("people").push(Node::map(vec![
+        ("name", Node::str("A. Ruiz")),
+        ("role", Node::str("mezcla")),
+    ]));
     p.save().unwrap();
 }
 
@@ -128,7 +140,10 @@ fn sincronizado() -> SyncState {
 
 fn emitir(e: &Estudio, p: &mut ProjectManifest, s: &emit::Shipment) -> emit::Emission {
     let (mut prog, canc) = container::silent_progress();
-    let mut pr = Progress { on_progress: &mut prog, cancelled: &canc };
+    let mut pr = Progress {
+        on_progress: &mut prog,
+        cancelled: &canc,
+    };
     emit::emit(
         &e.repo,
         &e.actor,
@@ -159,7 +174,10 @@ fn contexto(e: &Estudio, emisor: &str) -> ingest::ReceptionContext {
 
 fn verificar(e: &Estudio, paquete: &Path, ctx: &ingest::ReceptionContext) -> ingest::Verification {
     let (mut prog, canc) = container::silent_progress();
-    let mut pr = Progress { on_progress: &mut prog, cancelled: &canc };
+    let mut pr = Progress {
+        on_progress: &mut prog,
+        cancelled: &canc,
+    };
     ingest::verify(&e.repo, &e.actor, paquete, ctx, &mut pr).unwrap()
 }
 
@@ -185,26 +203,58 @@ fn creacion_de_proyecto_y_validacion_del_manifiesto() {
     assert!(p.root().join("00_ADMIN").is_dir());
     assert!(p.root().join("02_SESSIONS").is_dir());
     for opcional in attacca_core::repo::OPTIONAL_PROJECT_DIRS {
-        assert!(!p.root().join(opcional).exists(), "{opcional} no debía crearse");
+        assert!(
+            !p.root().join(opcional).exists(),
+            "{opcional} no debía crearse"
+        );
     }
 
     // Identidad conforme al apartado 9.2.
     assert!(attacca_core::ids::is_uid(p.uid().unwrap()));
-    assert_eq!(p.id().unwrap(), format!("{}_Cancion-de-Ejemplo_ORIG", clock::today()));
+    assert_eq!(
+        p.id().unwrap(),
+        format!("{}_Cancion-de-Ejemplo_ORIG", clock::today())
+    );
     assert!(naming::is_valid_name(p.id().unwrap()));
 
     // Todos los campos del Anexo B.1 están presentes; los pendientes, en nulo
     // explícito (apartado 13.2).
     let doc = p.doc();
     for campo in [
-        "stave", "uid", "id", "id_history", "title", "artist", "type", "status",
-        "release", "replication", "audio", "tools", "people", "sources",
-        "deliveries", "master", "rights", "preservation", "custody", "exceptions",
+        "stave",
+        "uid",
+        "id",
+        "id_history",
+        "title",
+        "artist",
+        "type",
+        "status",
+        "release",
+        "replication",
+        "audio",
+        "tools",
+        "people",
+        "sources",
+        "deliveries",
+        "master",
+        "rights",
+        "preservation",
+        "custody",
+        "exceptions",
     ] {
         assert!(doc.get(campo).is_some(), "el manifiesto omite {campo}");
     }
-    for pendiente in ["audio.tempo", "audio.key", "audio.origin", "master.lufs_i", "rights.isrc"] {
-        assert!(doc.at(pendiente).unwrap().is_null(), "{pendiente} debe ser nulo explícito");
+    for pendiente in [
+        "audio.tempo",
+        "audio.key",
+        "audio.origin",
+        "master.lufs_i",
+        "rights.isrc",
+    ] {
+        assert!(
+            doc.at(pendiente).unwrap().is_null(),
+            "{pendiente} debe ser nulo explícito"
+        );
     }
 
     // La validación no trata como no conformidad un campo cuya etapa no ha
@@ -261,7 +311,10 @@ fn cambio_de_titulo_con_identificador_interno_estable() {
     let hist = p.doc().get("id_history").unwrap().as_seq().unwrap();
     assert_eq!(hist.len(), 1);
     let entrada = hist[0].as_map().unwrap();
-    assert_eq!(entrada.get("previous").unwrap().as_str(), Some(id_anterior.as_str()));
+    assert_eq!(
+        entrada.get("previous").unwrap().as_str(),
+        Some(id_anterior.as_str())
+    );
     assert!(clock::parse_rfc3339(entrada.get("changed").unwrap().as_str().unwrap()).is_ok());
 
     // Ninguna referencia se rompe: el tracklist sigue resolviendo.
@@ -272,7 +325,11 @@ fn cambio_de_titulo_con_identificador_interno_estable() {
 
     // Emitido un envío, el identificador legible queda fijado (apartado 9.2).
     preparar_para_entrega(&mut p);
-    emitir(&e, &mut p, &envio(Profile::Delivery, false, &e.org, "Sello B"));
+    emitir(
+        &e,
+        &mut p,
+        &envio(Profile::Delivery, false, &e.org, "Sello B"),
+    );
     assert!(project::rename(&e.repo, &e.actor, &mut p, "Otro Mas").is_err());
 }
 
@@ -286,7 +343,11 @@ fn derivacion_de_proyecto_y_sellado_del_origen() {
     let mut origen = crear(&e, "Tema");
     preparar_para_entrega(&mut origen);
     std::fs::write(origen.root().join("00_ADMIN/notas.txt"), b"notas de sesion").unwrap();
-    emitir(&e, &mut origen, &envio(Profile::Delivery, false, &e.org, "Sello B"));
+    emitir(
+        &e,
+        &mut origen,
+        &envio(Profile::Delivery, false, &e.org, "Sello B"),
+    );
 
     let uid_origen = origen.uid().unwrap().to_string();
     let d = project::derive(&e.repo, &e.actor, &mut origen, "Cambio de tonalidad", false).unwrap();
@@ -298,9 +359,23 @@ fn derivacion_de_proyecto_y_sellado_del_origen() {
 
     let derivado = ProjectManifest::load(d.derived_root.join(manifest::PROJECT_FILE)).unwrap();
     // Ascendencia declarada.
-    assert_eq!(derivado.doc().at("lineage.parent_uid").unwrap().as_str(), Some(uid_origen.as_str()));
-    assert_eq!(derivado.doc().at("lineage.reason").unwrap().as_str(), Some("Cambio de tonalidad"));
-    assert!(clock::parse_rfc3339(derivado.doc().at("lineage.derived_at").unwrap().as_str().unwrap()).is_ok());
+    assert_eq!(
+        derivado.doc().at("lineage.parent_uid").unwrap().as_str(),
+        Some(uid_origen.as_str())
+    );
+    assert_eq!(
+        derivado.doc().at("lineage.reason").unwrap().as_str(),
+        Some("Cambio de tonalidad")
+    );
+    assert!(clock::parse_rfc3339(
+        derivado
+            .doc()
+            .at("lineage.derived_at")
+            .unwrap()
+            .as_str()
+            .unwrap()
+    )
+    .is_ok());
     // Copia íntegra: notas, referencias, sesiones y parámetros.
     assert!(d.derived_root.join("00_ADMIN/notas.txt").is_file());
     assert!(d.derived_root.join("05_STEMS/01_KICK.wav").is_file());
@@ -324,7 +399,10 @@ fn derivacion_de_proyecto_y_sellado_del_origen() {
         assert!(std::fs::write(&notas, b"intento").is_err());
     }
     // Y declara los proyectos derivados de él.
-    assert_eq!(origen.doc().get("derived").unwrap().as_seq().unwrap().len(), 1);
+    assert_eq!(
+        origen.doc().get("derived").unwrap().as_seq().unwrap().len(),
+        1
+    );
 }
 
 // =========================================================================
@@ -339,13 +417,28 @@ fn ciclo_completo_de_intercambio() {
     preparar_para_entrega(&mut p);
 
     // Emisión.
-    let em = emitir(&emisor, &mut p, &envio(Profile::Delivery, false, &emisor.org, &receptor.org));
+    let em = emitir(
+        &emisor,
+        &mut p,
+        &envio(Profile::Delivery, false, &emisor.org, &receptor.org),
+    );
     assert!(em.artifact.is_file());
     // La copia congelada queda en solo lectura (apartado 32.3).
-    assert!(std::fs::metadata(em.frozen_copy.join("EXCHANGE.yaml")).unwrap().permissions().readonly());
+    assert!(std::fs::metadata(em.frozen_copy.join("EXCHANGE.yaml"))
+        .unwrap()
+        .permissions()
+        .readonly());
     // El manifiesto del proyecto registra la entrega.
     let entregas = p.doc().get("deliveries").unwrap().as_seq().unwrap();
-    assert_eq!(entregas[0].as_map().unwrap().get("shipment_id").unwrap().as_str(), Some(em.shipment_id.as_str()));
+    assert_eq!(
+        entregas[0]
+            .as_map()
+            .unwrap()
+            .get("shipment_id")
+            .unwrap()
+            .as_str(),
+        Some(em.shipment_id.as_str())
+    );
 
     // Recepción y verificación.
     let paquete = depositar(&receptor, &em.artifact);
@@ -358,8 +451,16 @@ fn ciclo_completo_de_intercambio() {
     // Acuse de recibo.
     let ruta_acuse = receptor.repo.root().join("acuse.yaml");
     let acuse = ingest::issue_receipt(
-        &receptor.repo, &receptor.actor, &v, &ctx, "01_REF",
-        Some("2031-12-31"), false, None, sincronizado(), &ruta_acuse,
+        &receptor.repo,
+        &receptor.actor,
+        &v,
+        &ctx,
+        "01_REF",
+        Some("2031-12-31"),
+        false,
+        None,
+        sincronizado(),
+        &ruta_acuse,
     )
     .unwrap();
     assert_eq!(acuse.result(), Some(ReceiptResult::Accepted));
@@ -382,7 +483,8 @@ fn ciclo_completo_de_intercambio() {
         let entradas = est.repo.event_log().entries().unwrap();
         assert!(
             entradas.iter().any(|x| x.event == ev
-                && x.detail.get("shipment_id").and_then(|s| s.as_str()) == Some(em.shipment_id.as_str())),
+                && x.detail.get("shipment_id").and_then(|s| s.as_str())
+                    == Some(em.shipment_id.as_str())),
             "falta {ev}"
         );
         assert!(est.repo.event_log().verify_chain().unwrap().is_intact());
@@ -399,10 +501,18 @@ fn rechazo_por_integridad() {
     let receptor = estudio("Sello B", "M. Rivas");
     let mut p = crear(&emisor, "Tema");
     preparar_para_entrega(&mut p);
-    let em = emitir(&emisor, &mut p, &envio(Profile::Delivery, false, &emisor.org, &receptor.org));
+    let em = emitir(
+        &emisor,
+        &mut p,
+        &envio(Profile::Delivery, false, &emisor.org, &receptor.org),
+    );
 
     let paquete = depositar(&receptor, &em.artifact);
-    alterar_entrada(&paquete, "07_MASTER/master.wav", b"audio manipulado en transito");
+    alterar_entrada(
+        &paquete,
+        "07_MASTER/master.wav",
+        b"audio manipulado en transito",
+    );
 
     let ctx = contexto(&receptor, &emisor.org);
     let v = verificar(&receptor, &paquete, &ctx);
@@ -412,7 +522,8 @@ fn rechazo_por_integridad() {
     // No se extrae material utilizable de un paquete rechazado.
     assert!(v.package_dir.is_none());
     // Y no se ingiere ni siquiera de forma parcial.
-    let err = ingest::ingest(&receptor.repo, &receptor.actor, &v, &ctx, None, &paquete).unwrap_err();
+    let err =
+        ingest::ingest(&receptor.repo, &receptor.actor, &v, &ctx, None, &paquete).unwrap_err();
     assert_eq!(err.clause(), Some("39.1"));
 }
 
@@ -443,14 +554,22 @@ fn rechazo_por_firma() {
     let mut ctx = contexto(&receptor, &emisor.org);
     ctx.declared_identities = vec!["CLAVE-EMISOR".into()];
     ctx.revoked_identities = vec!["CLAVE-EMISOR".into()];
-    assert_eq!(verificar(&receptor, &paquete, &ctx).checks.authenticity, Outcome::Fail);
+    assert_eq!(
+        verificar(&receptor, &paquete, &ctx).checks.authenticity,
+        Outcome::Fail
+    );
 
     // Identidad declarada y vigente.
     let mut ctx = contexto(&receptor, &emisor.org);
     ctx.declared_identities = vec!["CLAVE-EMISOR".into()];
     let v = verificar(&receptor, &paquete, &ctx);
     assert_eq!(v.checks.authenticity, Outcome::Pass);
-    assert_eq!(v.result, ReceiptResult::Accepted, "{:?}", v.discrepancias_debug());
+    assert_eq!(
+        v.result,
+        ReceiptResult::Accepted,
+        "{:?}",
+        v.discrepancias_debug()
+    );
 }
 
 // =========================================================================
@@ -501,13 +620,19 @@ fn ciclo_de_custodia_cesion_y_retorno() {
     preparar_para_entrega(&mut p);
 
     // Cesión.
-    let em = emitir(&cedente, &mut p, &envio(Profile::Production, true, &cedente.org, &cesionario.org));
+    let em = emitir(
+        &cedente,
+        &mut p,
+        &envio(Profile::Production, true, &cedente.org, &cesionario.org),
+    );
     assert_eq!(p.custody_state(), CustodyState::InTransit);
     // La copia local queda en solo lectura por medios técnicos.
     let master = p.root().join("07_MASTER/master.wav");
     assert!(std::fs::metadata(&master).unwrap().permissions().readonly());
     // Y con marcador en texto plano.
-    let lock = manifest::custody_lock::CustodyLock::load(&p.root().join(manifest::CUSTODY_LOCK_FILE)).unwrap();
+    let lock =
+        manifest::custody_lock::CustodyLock::load(&p.root().join(manifest::CUSTODY_LOCK_FILE))
+            .unwrap();
     assert_eq!(lock.shipment_id, em.shipment_id);
     // Ninguna modificación es posible mientras el estado sea en tránsito.
     assert!(project::rename(&cedente.repo, &cedente.actor, &mut p, "Otro").is_err());
@@ -524,12 +649,28 @@ fn ciclo_de_custodia_cesion_y_retorno() {
     // El cesionario emite el acuse aceptando la custodia (paso 8 de la Tabla 33).
     let ruta_acuse = cesionario.repo.root().join("acuse.yaml");
     ingest::issue_receipt(
-        &cesionario.repo, &cesionario.actor, &v, &ctx, "01_REF", None,
-        true, v.checks_as_pairs().first().map(|_| "2026-12-31"), sincronizado(), &ruta_acuse,
+        &cesionario.repo,
+        &cesionario.actor,
+        &v,
+        &ctx,
+        "01_REF",
+        None,
+        true,
+        v.checks_as_pairs().first().map(|_| "2026-12-31"),
+        sincronizado(),
+        &ruta_acuse,
     )
     .unwrap();
 
-    let ing = ingest::ingest(&cesionario.repo, &cesionario.actor, &v, &ctx, Some(&mut destino), &paquete).unwrap();
+    let ing = ingest::ingest(
+        &cesionario.repo,
+        &cesionario.actor,
+        &v,
+        &ctx,
+        Some(&mut destino),
+        &paquete,
+    )
+    .unwrap();
     assert!(ing.custody_assumed);
     assert_eq!(destino.custody_state(), CustodyState::Own);
     assert!(!destino.root().join(manifest::CUSTODY_LOCK_FILE).exists());
@@ -538,10 +679,16 @@ fn ciclo_de_custodia_cesion_y_retorno() {
     let hist = destino.custody_history();
     let acciones: Vec<CustodyAction> = hist.iter().map(|x| x.action).collect();
     for esperada in [
-        CustodyAction::Exported, CustodyAction::Sent, CustodyAction::Received,
-        CustodyAction::Imported, CustodyAction::CustodyAssumed,
+        CustodyAction::Exported,
+        CustodyAction::Sent,
+        CustodyAction::Received,
+        CustodyAction::Imported,
+        CustodyAction::CustodyAssumed,
     ] {
-        assert!(acciones.contains(&esperada), "falta {esperada:?} en {acciones:?}");
+        assert!(
+            acciones.contains(&esperada),
+            "falta {esperada:?} en {acciones:?}"
+        );
     }
     assert!(custody::check_chronology(&hist).is_clean());
 
@@ -549,18 +696,29 @@ fn ciclo_de_custodia_cesion_y_retorno() {
     // momento el estado era en tránsito.
     let acuse = attacca_core::manifest::receipt::Receipt::load(&ruta_acuse).unwrap();
     let resultante =
-        custody_ops::record_receipt(&cedente.repo, &cedente.actor, &mut p, &acuse, &cedente.org).unwrap();
+        custody_ops::record_receipt(&cedente.repo, &cedente.actor, &mut p, &acuse, &cedente.org)
+            .unwrap();
     assert_eq!(resultante, CustodyState::Ceded);
     assert_eq!(p.custody_state(), CustodyState::Ceded);
     // La copia local sigue bloqueada y con su marcador.
     assert!(p.root().join(manifest::CUSTODY_LOCK_FILE).is_file());
-    assert!(p.custody_history().iter().any(|x| x.action == CustodyAction::CustodyTransferred));
+    assert!(p
+        .custody_history()
+        .iter()
+        .any(|x| x.action == CustodyAction::CustodyTransferred));
 
     // Retorno: el cesionario devuelve la custodia.
     let pkg = bagit::PackageDir::create(cesionario.repo.root(), "STAVE-XCHG_retorno").unwrap();
-    std::fs::write(pkg.content().join("mezcla_v02.wav"), b"trabajo del cesionario").unwrap();
+    std::fs::write(
+        pkg.content().join("mezcla_v02.wav"),
+        b"trabajo del cesionario",
+    )
+    .unwrap();
     let mut ex = ExchangeManifest::new(pkg.exchange_manifest());
-    ex.doc_mut().set("shipment", Node::map(vec![("id", Node::str("RETORNO-0001"))]));
+    ex.doc_mut().set(
+        "shipment",
+        Node::map(vec![("id", Node::str("RETORNO-0001"))]),
+    );
     ex.doc_mut().set(
         "custody",
         Node::map(vec![
@@ -581,7 +739,14 @@ fn ciclo_de_custodia_cesion_y_retorno() {
     );
     ex.save().unwrap();
 
-    let r = custody_ops::accept_return(&cedente.repo, &cedente.actor, &mut p, pkg.root(), &cedente.org).unwrap();
+    let r = custody_ops::accept_return(
+        &cedente.repo,
+        &cedente.actor,
+        &mut p,
+        pkg.root(),
+        &cedente.org,
+    )
+    .unwrap();
 
     assert!(r.custody_restored);
     assert!(!r.divergent);
@@ -594,8 +759,12 @@ fn ciclo_de_custodia_cesion_y_retorno() {
     assert!(master.is_file());
     // La cronología incorpora los asientos de la otra parte.
     let hist = p.custody_history();
-    assert!(hist.iter().any(|x| x.action == CustodyAction::CustodyAssumed));
-    assert!(hist.iter().any(|x| x.action == CustodyAction::CustodyReturned));
+    assert!(hist
+        .iter()
+        .any(|x| x.action == CustodyAction::CustodyAssumed));
+    assert!(hist
+        .iter()
+        .any(|x| x.action == CustodyAction::CustodyReturned));
     assert!(custody::check_chronology(&hist).is_clean(), "{hist:?}");
 }
 
@@ -612,18 +781,23 @@ fn ciclo_de_custodia_vencimiento_y_recuperacion_forzosa() {
 
     // La cesión se completa al obtenerse el acuse: el estado pasa a cedida.
     let seq = p.next_custody_seq();
-    p.doc_mut().ensure_map("custody").ensure_seq("history").push(
-        custody::ChronologyEntry {
-            seq,
-            action: CustodyAction::CustodyTransferred,
-            ts: clock::now_rfc3339(),
-            actor: cedente.actor.clone(),
-            org: cedente.org.clone(),
-            shipment_id: Some(em.shipment_id.clone()),
-        }
-        .to_node(),
-    );
-    p.doc_mut().ensure_map("custody").set("state", Node::str("cedida"));
+    p.doc_mut()
+        .ensure_map("custody")
+        .ensure_seq("history")
+        .push(
+            custody::ChronologyEntry {
+                seq,
+                action: CustodyAction::CustodyTransferred,
+                ts: clock::now_rfc3339(),
+                actor: cedente.actor.clone(),
+                org: cedente.org.clone(),
+                shipment_id: Some(em.shipment_id.clone()),
+            }
+            .to_node(),
+        );
+    p.doc_mut()
+        .ensure_map("custody")
+        .set("state", Node::str("cedida"));
     p.save().unwrap();
 
     // Reclamación por vencimiento de la fecha esperada de retorno.
@@ -635,24 +809,47 @@ fn ciclo_de_custodia_vencimiento_y_recuperacion_forzosa() {
     assert_eq!(p.custody_state(), CustodyState::Reclaimed);
     assert!(p.custody_state().allows_write());
     assert!(!p.root().join(manifest::CUSTODY_LOCK_FILE).exists());
-    assert!(!std::fs::metadata(p.root().join("07_MASTER/master.wav")).unwrap().permissions().readonly());
-    assert!(p.custody_history().iter().any(|x| x.action == CustodyAction::CustodyReclaimed));
+    assert!(!std::fs::metadata(p.root().join("07_MASTER/master.wav"))
+        .unwrap()
+        .permissions()
+        .readonly());
+    assert!(p
+        .custody_history()
+        .iter()
+        .any(|x| x.action == CustodyAction::CustodyReclaimed));
     // Se abre una no conformidad mayor (apartado 41.4, paso 4).
-    let ncs = attacca_core::nonconformity::Register::at(cedente.repo.root()).open_entries().unwrap();
-    assert!(ncs.iter().any(|n| n.severity == attacca_core::nonconformity::Severity::Major));
+    let ncs = attacca_core::nonconformity::Register::at(cedente.repo.root())
+        .open_entries()
+        .unwrap();
+    assert!(ncs
+        .iter()
+        .any(|n| n.severity == attacca_core::nonconformity::Severity::Major));
 
     // Un retorno posterior no se ingiere de forma automática: es divergente.
     let pkg = bagit::PackageDir::create(cedente.repo.root(), "STAVE-XCHG_tardio").unwrap();
     std::fs::write(pkg.content().join("mezcla.wav"), b"trabajo tardio").unwrap();
     let mut ex = ExchangeManifest::new(pkg.exchange_manifest());
-    ex.doc_mut().set("shipment", Node::map(vec![("id", Node::str("TARDIO-0001"))]));
+    ex.doc_mut().set(
+        "shipment",
+        Node::map(vec![("id", Node::str("TARDIO-0001"))]),
+    );
     ex.doc_mut().set(
         "custody",
-        Node::map(vec![("transfers", Node::Bool(false)), ("returns", Node::Bool(true))]),
+        Node::map(vec![
+            ("transfers", Node::Bool(false)),
+            ("returns", Node::Bool(true)),
+        ]),
     );
     ex.save().unwrap();
 
-    let r = custody_ops::accept_return(&cedente.repo, &cedente.actor, &mut p, pkg.root(), &cedente.org).unwrap();
+    let r = custody_ops::accept_return(
+        &cedente.repo,
+        &cedente.actor,
+        &mut p,
+        pkg.root(),
+        &cedente.org,
+    )
+    .unwrap();
     assert!(r.divergent);
     assert!(!r.custody_restored);
     assert_eq!(p.custody_state(), CustodyState::Reclaimed);
@@ -672,10 +869,16 @@ fn el_proyecto_derivado_hace_visible_la_divergencia_sobre_material_cedido() {
     let d = custody_ops::open_divergent_project(&cedente.repo, &cedente.actor, &p).unwrap();
     let derivado = ProjectManifest::load(d.derived_root.join(manifest::PROJECT_FILE)).unwrap();
     assert_eq!(derivado.custody_state(), CustodyState::Own);
-    assert_eq!(derivado.doc().at("lineage.parent_uid").unwrap().as_str(), p.uid());
+    assert_eq!(
+        derivado.doc().at("lineage.parent_uid").unwrap().as_str(),
+        p.uid()
+    );
     // Y el proyecto cedido sigue bloqueado.
     assert_eq!(p.custody_state(), CustodyState::InTransit);
-    assert!(std::fs::metadata(p.root().join("07_MASTER/master.wav")).unwrap().permissions().readonly());
+    assert!(std::fs::metadata(p.root().join("07_MASTER/master.wav"))
+        .unwrap()
+        .permissions()
+        .readonly());
 }
 
 // =========================================================================
@@ -698,7 +901,9 @@ fn conmutacion_de_replica_y_deteccion_de_divergencia() {
             last_synced: Some(clock::now_rfc3339()),
         }],
     );
-    p.doc_mut().ensure_map("replication").set("active_volume", Node::str("vol-local"));
+    p.doc_mut()
+        .ensure_map("replication")
+        .set("active_volume", Node::str("vol-local"));
     p.save().unwrap();
 
     // Conmutación hacia un volumen portátil.
@@ -706,7 +911,12 @@ fn conmutacion_de_replica_y_deteccion_de_divergencia() {
     let destino = portatil.path().join("2026-08-06_Tema_ORIG");
     let origen = p.root().to_path_buf();
     let informe = attacca_core::replica::switch_active(
-        &mut p, &origen, &destino, "vol-portatil", "Estudio - Portable 01", true,
+        &mut p,
+        &origen,
+        &destino,
+        "vol-portatil",
+        "Estudio - Portable 01",
+        true,
     )
     .unwrap();
 
@@ -715,7 +925,13 @@ fn conmutacion_de_replica_y_deteccion_de_divergencia() {
     // La activa pasa a ser la nueva, en un solo acto.
     assert_eq!(p.active_volume(), Some("vol-portatil"));
     let replicas = attacca_core::replica::replicas_of(p.doc());
-    assert_eq!(replicas.iter().filter(|r| r.state == attacca_core::replica::ReplicaState::Active).count(), 1);
+    assert_eq!(
+        replicas
+            .iter()
+            .filter(|r| r.state == attacca_core::replica::ReplicaState::Active)
+            .count(),
+        1
+    );
     // La anterior queda en solo lectura y con su marcador.
     assert!(origen.join(manifest::REPLICA_HOLD_FILE).is_file());
     let hold = manifest::replica_hold::ReplicaHold::parse(
@@ -724,7 +940,10 @@ fn conmutacion_de_replica_y_deteccion_de_divergencia() {
     .unwrap();
     assert_eq!(hold.state, attacca_core::replica::ReplicaState::Standby);
     assert_eq!(hold.active_uuid, "vol-portatil");
-    assert!(std::fs::metadata(origen.join("07_MASTER/master.wav")).unwrap().permissions().readonly());
+    assert!(std::fs::metadata(origen.join("07_MASTER/master.wav"))
+        .unwrap()
+        .permissions()
+        .readonly());
     // La nueva activa no lleva marcador.
     assert!(!destino.join(manifest::REPLICA_HOLD_FILE).exists());
     // No se escribe en una réplica que no sea la activa.
@@ -738,10 +957,17 @@ fn conmutacion_de_replica_y_deteccion_de_divergencia() {
         attacca_core::replica::Reconciliation::Synchronizable
     );
     let _ = attacca_core::fsx::readonly::set_tree_readonly(&origen, false, &[]);
-    std::fs::write(origen.join("07_MASTER/master.wav"), b"cambio hecho en la replica desconectada").unwrap();
+    std::fs::write(
+        origen.join("07_MASTER/master.wav"),
+        b"cambio hecho en la replica desconectada",
+    )
+    .unwrap();
     match attacca_core::replica::reconcile(&destino, &origen).unwrap() {
         attacca_core::replica::Reconciliation::Divergent { changed } => {
-            assert!(changed.contains(&"07_MASTER/master.wav".to_string()), "{changed:?}");
+            assert!(
+                changed.contains(&"07_MASTER/master.wav".to_string()),
+                "{changed:?}"
+            );
         }
         otro => panic!("se esperaba divergencia, se obtuvo {otro:?}"),
     }
@@ -756,7 +982,11 @@ fn contenedor_extraido_con_utilidad_del_sistema() {
     let e = estudio("Estudio A", "J. Duarte");
     let mut p = crear(&e, "Tema");
     preparar_para_entrega(&mut p);
-    let em = emitir(&e, &mut p, &envio(Profile::Delivery, false, &e.org, "Sello B"));
+    let em = emitir(
+        &e,
+        &mut p,
+        &envio(Profile::Delivery, false, &e.org, "Sello B"),
+    );
 
     // El contenedor es un ZIP conforme a ISO/IEC 21320-1 y se abre con una
     // biblioteca de propósito general, sin conocimiento de la norma.
@@ -801,16 +1031,24 @@ fn contenedor_extraido_con_utilidad_del_sistema() {
     // como haría `sha256sum -c`.
     let fuera = tempfile::tempdir().unwrap();
     let (mut prog, canc) = container::silent_progress();
-    let mut pr = Progress { on_progress: &mut prog, cancelled: &canc };
+    let mut pr = Progress {
+        on_progress: &mut prog,
+        cancelled: &canc,
+    };
     let raiz = container::extract(&em.artifact, fuera.path(), &mut pr).unwrap();
 
-    for archivo in [bagit::BAGIT_TXT, "EXCHANGE.yaml", bagit::LEEME_TXT, bagit::MANIFEST_TXT] {
+    for archivo in [
+        bagit::BAGIT_TXT,
+        "EXCHANGE.yaml",
+        bagit::LEEME_TXT,
+        bagit::MANIFEST_TXT,
+    ] {
         assert!(raiz.join(archivo).is_file(), "falta {archivo}");
     }
     // Cada línea del manifiesto de integridad se comprueba con el mismo
     // procedimiento que emplea una utilidad del sistema.
     let manifiesto = integrity::IntegrityManifest::load(&raiz.join(bagit::MANIFEST_TXT)).unwrap();
-    assert!(manifiesto.len() > 0);
+    assert!(!manifiesto.is_empty());
     for (ruta, resumen) in manifiesto.entries() {
         let real = integrity::digest_file(&raiz.join(ruta)).unwrap();
         assert_eq!(real, resumen, "{ruta}");
@@ -954,7 +1192,11 @@ fn alterar_entrada(contenedor: &Path, sufijo: &str, contenido: &[u8]) {
             };
             destino.start_file(&nombre, opciones).unwrap();
             destino
-                .write_all(if nombre.ends_with(sufijo) { contenido } else { &datos })
+                .write_all(if nombre.ends_with(sufijo) {
+                    contenido
+                } else {
+                    &datos
+                })
                 .unwrap();
         }
         destino.finish().unwrap();
@@ -971,7 +1213,8 @@ fn contenedor_con_entrada(destino: &Path, entrada: &str) {
     let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
     zip.start_file("mimetype", stored).unwrap();
     zip.write_all(container::MIMETYPE.as_bytes()).unwrap();
-    zip.start_file(entrada, SimpleFileOptions::default()).unwrap();
+    zip.start_file(entrada, SimpleFileOptions::default())
+        .unwrap();
     zip.write_all(b"contenido fuera de lugar").unwrap();
     zip.finish().unwrap();
 }
@@ -985,8 +1228,12 @@ fn contenedor_con_enlace(destino: &Path) {
     let stored = SimpleFileOptions::default().compression_method(CompressionMethod::Stored);
     zip.start_file("mimetype", stored).unwrap();
     zip.write_all(container::MIMETYPE.as_bytes()).unwrap();
-    zip.add_symlink("paquete/enlace", "/etc/passwd", SimpleFileOptions::default())
-        .unwrap();
+    zip.add_symlink(
+        "paquete/enlace",
+        "/etc/passwd",
+        SimpleFileOptions::default(),
+    )
+    .unwrap();
     zip.finish().unwrap();
 }
 
@@ -1004,7 +1251,6 @@ impl Diagnostico for ingest::Verification {
             .join(" | ")
     }
 }
-
 
 /// Indica si el proceso puede eludir los bits de permiso del sistema de
 /// archivos. En Unix, root los ignora.

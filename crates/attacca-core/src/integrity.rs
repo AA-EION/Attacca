@@ -266,7 +266,10 @@ mod tests {
     #[test]
     fn el_manifiesto_es_determinista() {
         let dir = arbol();
-        assert_eq!(compute(dir.path()).unwrap().render(), compute(dir.path()).unwrap().render());
+        assert_eq!(
+            compute(dir.path()).unwrap().render(),
+            compute(dir.path()).unwrap().render()
+        );
     }
 
     #[test]

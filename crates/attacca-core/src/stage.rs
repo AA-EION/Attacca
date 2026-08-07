@@ -295,7 +295,11 @@ pub fn active_stage(doc: &Map, evidence: &Evidence) -> Stage {
             .at("vocabulary.frozen")
             .and_then(|n| n.as_bool())
             .unwrap_or(false);
-        return if congelado { Stage::Editing } else { Stage::Recording };
+        return if congelado {
+            Stage::Editing
+        } else {
+            Stage::Recording
+        };
     }
     // Sin sesiones, la etapa depende de si el plan de grabación consta.
     let plan = doc
@@ -335,12 +339,18 @@ mod tests {
 
     #[test]
     fn un_proyecto_vacio_esta_en_composicion() {
-        assert_eq!(active_stage(&doc_base(), &Evidence::default()), Stage::Composition);
+        assert_eq!(
+            active_stage(&doc_base(), &Evidence::default()),
+            Stage::Composition
+        );
     }
 
     #[test]
     fn las_sesiones_situan_el_proyecto_en_grabacion() {
-        let ev = Evidence { has_sessions: true, ..Default::default() };
+        let ev = Evidence {
+            has_sessions: true,
+            ..Default::default()
+        };
         assert_eq!(active_stage(&doc_base(), &ev), Stage::Recording);
     }
 
@@ -348,17 +358,26 @@ mod tests {
     fn el_vocabulario_congelado_cierra_la_grabacion() {
         let mut d = doc_base();
         d.set("vocabulary", Node::map(vec![("frozen", Node::Bool(true))]));
-        let ev = Evidence { has_sessions: true, ..Default::default() };
+        let ev = Evidence {
+            has_sessions: true,
+            ..Default::default()
+        };
         assert_eq!(active_stage(&d, &ev), Stage::Editing);
     }
 
     #[test]
     fn las_mediciones_registradas_cierran_el_mastering() {
-        let ev = Evidence { has_master: true, ..Default::default() };
+        let ev = Evidence {
+            has_master: true,
+            ..Default::default()
+        };
         assert_eq!(active_stage(&doc_base(), &ev), Stage::Mastering);
 
         let mut d = doc_base();
-        d.set("master", Node::map(vec![("true_peak_db", Node::Float(-1.0))]));
+        d.set(
+            "master",
+            Node::map(vec![("true_peak_db", Node::Float(-1.0))]),
+        );
         assert_eq!(active_stage(&d, &ev), Stage::QualityControl);
     }
 
@@ -366,7 +385,11 @@ mod tests {
     fn la_custodia_cedida_prevalece_sobre_el_contenido() {
         let mut d = doc_base();
         d.set("custody", Node::map(vec![("state", Node::str("cedida"))]));
-        let ev = Evidence { has_master: true, has_qc_report: true, ..Default::default() };
+        let ev = Evidence {
+            has_master: true,
+            has_qc_report: true,
+            ..Default::default()
+        };
         assert_eq!(active_stage(&d, &ev), Stage::ProductionExchange);
     }
 
@@ -391,16 +414,27 @@ mod tests {
 
         let ev = observe(dir.path());
         assert!(ev.has_sessions);
-        assert!(!ev.has_stems, "una carpeta con solo regenerables está vacía");
+        assert!(
+            !ev.has_stems,
+            "una carpeta con solo regenerables está vacía"
+        );
         assert_eq!(active_stage(&doc_base(), &ev), Stage::Recording);
     }
 
     #[test]
     fn cada_etapa_declara_carpetas_y_acciones() {
         for etapa in [
-            Stage::Composition, Stage::PreProduction, Stage::Recording, Stage::Editing,
-            Stage::Mixing, Stage::Mastering, Stage::QualityControl, Stage::Distribution,
-            Stage::ProductionExchange, Stage::Reception, Stage::Archival,
+            Stage::Composition,
+            Stage::PreProduction,
+            Stage::Recording,
+            Stage::Editing,
+            Stage::Mixing,
+            Stage::Mastering,
+            Stage::QualityControl,
+            Stage::Distribution,
+            Stage::ProductionExchange,
+            Stage::Reception,
+            Stage::Archival,
         ] {
             assert!(!etapa.folders().is_empty(), "{:?}", etapa);
             assert!(!etapa.actions().is_empty(), "{:?}", etapa);

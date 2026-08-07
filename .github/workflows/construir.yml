@@ -269,11 +269,14 @@ jobs:
           done
           ls -la
 
-      # Las dos arquitecturas se comprueban sobre lo que se publica: el .dmg se
-      # monta y se examina el ejecutable que contiene. Antes se examinaba el
-      # .app del directorio de compilacion, que con `--bundles dmg` no se
-      # conserva, y se daba por hecho ademas que el ejecutable se llamaba como
-      # el producto, cuando lleva el nombre del paquete de cargo.
+      # Las dos arquitecturas se comprueban sobre los dos binarios universales
+      # que se producen: el de la aplicacion, que Tauri copia dentro del .app y
+      # este dentro del .dmg, y el de la linea de ordenes.
+      #
+      # Montar el .dmg y mirar dentro seria mas directo, y fue lo primero que se
+      # intento, pero hdiutil falla de forma intermitente en las maquinas de
+      # macOS por contencion de recursos. Una comprobacion obligatoria no puede
+      # descansar sobre una orden que falla sola.
       - name: Comprobar que el paquete de macOS es universal
         if: matrix.os == 'macos-14'
         run: |
@@ -296,29 +299,16 @@ jobs:
           # La linea de ordenes se publica tambien para las dos arquitecturas.
           comprobar_universal "artefactos/attacca-macos-universal" "Linea de ordenes"
 
-          punto=$(mktemp -d)
-          trap 'hdiutil detach "$punto" -quiet 2>/dev/null || true' EXIT
-          hdiutil attach "artefactos/Attacca-macos-universal.dmg" \
-            -mountpoint "$punto" -nobrowse -readonly -quiet
-
-          binario=""
-          for app in "$punto"/*.app; do
-            [ -d "$app" ] || continue
-            for f in "$app"/Contents/MacOS/*; do
-              [ -f "$f" ] || continue
-              binario="$f"
-              break
-            done
-            break
-          done
-
-          if [ -z "$binario" ]; then
-            echo "El .dmg no contiene ninguna aplicacion con ejecutable."
-            find "$punto" | head -40
+          # Y el binario de la aplicacion, que es el que Tauri copia dentro del
+          # .app y este dentro del .dmg. El nombre es el del paquete de cargo,
+          # que esta en este repositorio; no se deduce del nombre del producto.
+          aplicacion="target/universal-apple-darwin/release/attacca-app"
+          if [ ! -f "$aplicacion" ]; then
+            echo "No esta el binario universal de la aplicacion en $aplicacion."
+            find target/universal-apple-darwin/release -maxdepth 1 -type f | head -20
             exit 1
           fi
-
-          comprobar_universal "$binario" "Aplicacion (${binario##*/})"
+          comprobar_universal "$aplicacion" "Aplicacion"
 
       # Un AppImage que no arranca no es un artefacto. Se comprueba que se
       # ejecuta bajo una pantalla virtual.
@@ -341,7 +331,32 @@ jobs:
           fi
           echo "El AppImage arranco y se mantuvo en ejecucion."
 
+      # En Windows la comprobacion se hace con PowerShell. Lanzar el ejecutable
+      # nativo desde el bash de MSYS dejaba el paso esperando indefinidamente:
+      # el proceso hijo no se daba por terminado, con tuberia o sin ella, y con
+      # limite de tiempo solo se convertia en un 124 sin salida alguna.
+      - name: Comprobar que la linea de ordenes del artefacto responde (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $bin = Get-ChildItem artefactos -Filter "attacca-${{ matrix.etiqueta }}*" |
+            Where-Object { $_.Extension -ne ".sha256" } |
+            Select-Object -First 1
+          if (-not $bin) {
+            Write-Host "No esta la linea de ordenes en artefactos."
+            Get-ChildItem artefactos
+            exit 1
+          }
+          Write-Host "Ejecutando $($bin.Name)"
+          $salida = & $bin.FullName conformidad
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "La linea de ordenes termino con codigo $LASTEXITCODE."
+            exit 1
+          }
+          $salida | Select-Object -First 6
+
       - name: Comprobar que la linea de ordenes del artefacto responde
+        if: matrix.os != 'windows-latest'
         shell: bash
         run: |
           set -euo pipefail

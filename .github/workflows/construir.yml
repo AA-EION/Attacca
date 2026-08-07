@@ -347,13 +347,30 @@ jobs:
             Get-ChildItem artefactos
             exit 1
           }
-          Write-Host "Ejecutando $($bin.Name)"
-          $salida = & $bin.FullName conformidad
-          if ($LASTEXITCODE -ne 0) {
-            Write-Host "La linea de ordenes termino con codigo $LASTEXITCODE."
+          Write-Host "Ejecutando $($bin.Name), $($bin.Length) bytes"
+
+          # Start-Process con -Wait espera al proceso y expone su codigo de
+          # salida. El operador de llamada dejaba $LASTEXITCODE sin asignar, de
+          # modo que no habia forma de saber si el programa habia terminado ni
+          # con que resultado.
+          $salida = Join-Path $env:RUNNER_TEMP "conformidad.txt"
+          $errores = Join-Path $env:RUNNER_TEMP "conformidad.err.txt"
+          $proceso = Start-Process -FilePath $bin.FullName `
+            -ArgumentList "conformidad" -Wait -PassThru -NoNewWindow `
+            -RedirectStandardOutput $salida -RedirectStandardError $errores
+
+          if ($proceso.ExitCode -ne 0) {
+            Write-Host "La linea de ordenes termino con codigo $($proceso.ExitCode)."
+            Write-Host "--- salida de error ---"
+            if (Test-Path $errores) { Get-Content $errores -TotalCount 20 }
             exit 1
           }
-          $salida | Select-Object -First 6
+          if (-not (Test-Path $salida) -or (Get-Item $salida).Length -eq 0) {
+            Write-Host "La linea de ordenes termino sin emitir nada."
+            if (Test-Path $errores) { Get-Content $errores -TotalCount 20 }
+            exit 1
+          }
+          Get-Content $salida -TotalCount 6
 
       - name: Comprobar que la linea de ordenes del artefacto responde
         if: matrix.os != 'windows-latest'

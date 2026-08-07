@@ -11,7 +11,16 @@
 set -euo pipefail
 
 raiz="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-trabajo="$(mktemp -d)"
+# El presupuesto de ruta del apartado 9.1 son 200 caracteres contados desde la
+# raiz del repositorio, y el directorio temporal de macOS —de la forma
+# /var/folders/3s/j8k2m4n90qz5x7cvbn3lp2rw0000gn/T— consume ya 65. Lo que este
+# guion comprueba es la autodescripcion del material, no el presupuesto de
+# ruta, de modo que parte de la raiz mas corta disponible.
+if [ -d /tmp ]; then
+  trabajo="$(mktemp -d /tmp/attacca-XXXXXX)"
+else
+  trabajo="$(mktemp -d)"
+fi
 # La copia congelada de un envio queda en solo lectura, que es lo correcto, y
 # un usuario sin privilegios no puede suprimirla sin restituir antes el
 # permiso. El borrado del directorio de trabajo no es parte de lo que se
